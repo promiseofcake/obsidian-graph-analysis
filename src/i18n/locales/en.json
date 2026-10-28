@@ -12,6 +12,35 @@
       "placeholder": "Private,draft,archive"
     },
     "llmHeading": "LLM model configuration",
+    "aiProvider": {
+      "name": "AI provider",
+      "desc": "Where AI analysis requests are sent.",
+      "gemini": "Google Gemini (API key)",
+      "bedrock": "AWS Bedrock (AWS CLI profile)"
+    },
+    "bedrock": {
+      "awsProfile": {
+        "name": "AWS profile",
+        "desc": "Profile from ~/.aws/config. Credentials come from `aws configure export-credentials` and are kept in memory only.",
+        "placeholder": "my-bedrock-role"
+      },
+      "region": {
+        "name": "AWS region",
+        "desc": "Region of the Bedrock runtime endpoint.",
+        "placeholder": "us-east-1"
+      },
+      "modelId": {
+        "name": "Model or inference profile ID",
+        "desc": "Bedrock model ID, inference profile ID, or inference profile ARN.",
+        "placeholder": "us.anthropic.claude-sonnet-..."
+      },
+      "cliPath": {
+        "name": "AWS CLI path",
+        "desc": "Absolute path to the aws binary (Obsidian does not inherit your shell PATH).",
+        "placeholder": "/usr/local/bin/aws"
+      },
+      "networkDisclosure": "When you run Vault Analysis or generate tab insights, the plugin sends note text and analysis prompts to AWS Bedrock (bedrock-runtime.<region>.amazonaws.com), signed with temporary credentials from your AWS CLI profile. Nothing is sent on plugin load."
+    },
     "geminiApiKey": {
       "name": "Gemini API key",
       "descPrefix": "Your Google Gemini API key. ",
@@ -75,7 +104,7 @@
     "graphLoadError": "Error loading graph data: {{message}}",
     "graphReloadError": "Error reloading graph data: {{message}}",
     "centralityFailed": "Failed to calculate {{type}} centrality: {{message}}",
-    "configureApiKey": "Please configure your Gemini API key in settings to use vault analysis.",
+    "configureApiKey": "Please configure your AI provider (Gemini API key or Bedrock settings) in settings to use vault analysis.",
     "noFilesAfterExclusion": "No files found for analysis after applying exclusion rules.",
     "allFilesUpToDate": "All files are up to date. No changes detected. ({{count}} files unchanged)",
     "vaultAnalysisProgress": "Analyzing vault: {{current}}/{{total}} files...",

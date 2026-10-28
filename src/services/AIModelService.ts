@@ -1,5 +1,6 @@
 import { GraphAnalysisSettings } from '../types/types';
 import { geminiGenerateContent } from './GeminiRestClient';
+import { bedrockConverseStructured } from './BedrockRestClient';
 import { createKnowledgeNetworkSchema } from '../ai/schemas/knowledge-network.schema';
 import { createVaultSemanticAnalysisSchema } from '../ai/schemas/vault-semantic-analysis.schema';
 import { createKnowledgeEvolutionSchema } from '../ai/schemas/knowledge-evolution.schema';
@@ -37,12 +38,16 @@ export class AIModelService {
     private readonly MODEL_NAME = 'gemini-3-flash-preview';
     private readonly SEMANTIC_MODEL_NAME = 'gemini-3.1-flash-lite-preview'; // Default when no modelOverride
 
+    private get isBedrock(): boolean {
+        return this.settings?.aiProvider === 'bedrock';
+    }
+
     public getModelName(): string {
-        return this.MODEL_NAME;
+        return this.isBedrock ? this.settings.bedrockModelId : this.MODEL_NAME;
     }
 
     public getSemanticModelName(): string {
-        return this.SEMANTIC_MODEL_NAME;
+        return this.isBedrock ? this.settings.bedrockModelId : this.SEMANTIC_MODEL_NAME;
     }
 
     constructor(app: { workspace: { containerEl: HTMLElement } }, settings: GraphAnalysisSettings) {
@@ -57,12 +62,84 @@ export class AIModelService {
         this.settings = settings;
     }
 
+    /** Whether the selected provider has the settings it needs to make calls. */
+    public isConfigured(): boolean {
+        if (this.isBedrock) {
+            return !!(this.settings.bedrockAwsProfile?.trim()
+                && this.settings.bedrockRegion?.trim()
+                && this.settings.bedrockModelId?.trim()
+                && this.settings.awsCliPath?.trim());
+        }
+        return !!this.settings?.geminiApiKey?.trim();
+    }
+
     private getApiKey(): string {
         const key = this.settings?.geminiApiKey?.trim();
         if (!key) {
             throw new Error('Gemini API key not configured. Please configure your API key in settings.');
         }
         return key;
+    }
+
+    /**
+     * Single provider call. Gemini returns JSON text to parse; Bedrock returns the parsed structure.
+     */
+    private async callModel(
+        model: string,
+        prompt: string,
+        responseSchema: unknown,
+        maxOutputTokens: number,
+        temperature: number,
+        topP: number,
+        thinkingBudget: number
+    ): Promise<{ text?: string; data?: unknown; tokenUsage: TokenUsage }> {
+        if (this.isBedrock) {
+            if (!this.isConfigured()) {
+                throw new Error('Bedrock not configured. Please set AWS profile, region, and model ID in settings.');
+            }
+            const response = await bedrockConverseStructured({
+                awsCliPath: this.settings.awsCliPath.trim(),
+                awsProfile: this.settings.bedrockAwsProfile.trim(),
+                region: this.settings.bedrockRegion.trim(),
+                modelId: this.settings.bedrockModelId.trim(),
+                prompt,
+                responseSchema,
+                maxTokens: maxOutputTokens,
+                temperature
+            });
+            return {
+                data: response.data,
+                tokenUsage: {
+                    promptTokens: response.usage.inputTokens,
+                    candidatesTokens: response.usage.outputTokens,
+                    totalTokens: response.usage.totalTokens
+                }
+            };
+        }
+
+        const response = await geminiGenerateContent({
+            apiKey: this.getApiKey(),
+            model,
+            prompt,
+            generationConfig: {
+                responseMimeType: 'application/json',
+                responseSchema,
+                temperature,
+                topP,
+                maxOutputTokens,
+                thinkingConfig: {
+                    thinkingBudget
+                }
+            }
+        });
+        return {
+            text: response.text,
+            tokenUsage: {
+                promptTokens: response.usageMetadata?.promptTokenCount || 0,
+                candidatesTokens: response.usageMetadata?.candidatesTokenCount || 0,
+                totalTokens: response.usageMetadata?.totalTokenCount || 0
+            }
+        };
     }
 
     /**
@@ -76,30 +153,15 @@ export class AIModelService {
         temperature: number = 0.3, // more accurate results with lower temperature
         topP: number = 0.72
     ): Promise<AIResponse<T>> {
-        const apiKey = this.getApiKey();
+        const model = this.getModelName();
 
         try {
-            const response = await geminiGenerateContent({
-                apiKey,
-                model: this.MODEL_NAME,
-                prompt,
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    responseSchema,
-                    temperature,
-                    topP,
-                    maxOutputTokens,
-                    thinkingConfig: {
-                        thinkingBudget: -1
-                    }
-                }
-            });
+            const response = await this.callModel(model, prompt, responseSchema, maxOutputTokens, temperature, topP, -1);
+            const tokenUsage = response.tokenUsage;
 
-            const tokenUsage: TokenUsage = {
-                promptTokens: response.usageMetadata?.promptTokenCount || 0,
-                candidatesTokens: response.usageMetadata?.candidatesTokenCount || 0,
-                totalTokens: response.usageMetadata?.totalTokenCount || 0
-            };
+            if (response.data !== undefined) {
+                return { result: response.data as T, tokenUsage };
+            }
 
             const result = response.text || '';
 
@@ -125,7 +187,7 @@ export class AIModelService {
             const errorType = classifyGeminiError(errorMessage);
 
             if (errorType === 'quota_exhausted') {
-                throw new SemanticAnalysisError(errorMessage, 'quota_exhausted', this.MODEL_NAME);
+                throw new SemanticAnalysisError(errorMessage, 'quota_exhausted', model);
             }
             if (errorType === 'rate_limit') {
                 await new Promise(resolve => this.win.setTimeout(resolve, this.ADVANCED_RATE_LIMIT_DELAY));
@@ -155,31 +217,16 @@ export class AIModelService {
         topP: number = 0.72,
         modelOverride?: string
     ): Promise<AIResponse<T>> {
-        const apiKey = this.getApiKey();
-        const model = modelOverride ?? this.SEMANTIC_MODEL_NAME;
+        // Bedrock uses the configured model only; overrides are stored Gemini model names from failed batches
+        const model = this.isBedrock ? this.getSemanticModelName() : (modelOverride ?? this.SEMANTIC_MODEL_NAME);
 
         try {
-            const response = await geminiGenerateContent({
-                apiKey,
-                model,
-                prompt,
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    responseSchema,
-                    temperature,
-                    topP,
-                    maxOutputTokens,
-                    thinkingConfig: {
-                        thinkingBudget: 0
-                    }
-                }
-            });
+            const response = await this.callModel(model, prompt, responseSchema, maxOutputTokens, temperature, topP, 0);
+            const tokenUsage = response.tokenUsage;
 
-            const tokenUsage: TokenUsage = {
-                promptTokens: response.usageMetadata?.promptTokenCount || 0,
-                candidatesTokens: response.usageMetadata?.candidatesTokenCount || 0,
-                totalTokens: response.usageMetadata?.totalTokenCount || 0
-            };
+            if (response.data !== undefined) {
+                return { result: response.data as T, tokenUsage };
+            }
 
             const result = response.text?.trim() || '';
 

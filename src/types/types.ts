@@ -19,10 +19,17 @@ export type PluginLanguageOption = 'auto' | 'en' | 'zh-Hans';
 export type AiResponseLanguage = PluginLanguageOption;
 export type UiLanguage = PluginLanguageOption;
 
+export type AiProvider = 'gemini' | 'bedrock';
+
 export interface GraphAnalysisSettings {
     excludeFolders: string[];
     excludeTags: string[];
+    aiProvider: AiProvider;
     geminiApiKey: string;
+    bedrockAwsProfile: string;
+    bedrockRegion: string;
+    bedrockModelId: string;
+    awsCliPath: string;
     aiResponseLanguage: AiResponseLanguage;
     uiLanguage: UiLanguage;
 }
@@ -30,7 +37,12 @@ export interface GraphAnalysisSettings {
 export const DEFAULT_SETTINGS: GraphAnalysisSettings = {
     excludeFolders: [],
     excludeTags: [],
+    aiProvider: 'gemini',
     geminiApiKey: '',
+    bedrockAwsProfile: '',
+    bedrockRegion: 'us-east-1',
+    bedrockModelId: '',
+    awsCliPath: '/usr/local/bin/aws',
     aiResponseLanguage: 'auto',
     uiLanguage: 'auto'
 };

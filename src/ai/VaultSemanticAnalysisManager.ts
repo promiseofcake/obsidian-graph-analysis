@@ -522,8 +522,8 @@ export class VaultSemanticAnalysisManager {
     public async generateVaultAnalysis(): Promise<boolean> {
         this.setAnalysisInProgress('semantic');
         try {
-            // Check if Gemini API key is configured
-            if (!this.settings.geminiApiKey || this.settings.geminiApiKey.trim() === '') {
+            // Check the selected AI provider is configured
+            if (!this.aiService.isConfigured()) {
                 new Notice(t('notices.configureApiKey'));
                 return false;
             }
