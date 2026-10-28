@@ -1337,6 +1337,10 @@ body.graph-view-dragging .graph-view-svg {
   word-break: break-word;
 }
 
+.graph-settings-invalid {
+  border-color: var(--text-error) !important;
+}
+
 button.is-disabled {
   opacity: 0.5;
   cursor: not-allowed;

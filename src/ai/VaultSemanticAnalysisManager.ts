@@ -33,7 +33,6 @@ export class VaultSemanticAnalysisManager {
     private subdivisionsList: Array<{id: string, name: string, domain: string, domainId: string}> = [];
     private domainTemplateLoaded: boolean = false;
     private readonly MAX_CHARS_PER_NOTE = 8000;
-    private readonly MAX_NOTES_PER_BATCH = 30;
 
     private _analysisInProgress: 'semantic' | 'structure' | 'evolution' | 'actions' | null = null;
     private activeVaultAnalysisModal: VaultAnalysisModal | null = null;
@@ -595,7 +594,7 @@ export class VaultSemanticAnalysisManager {
             // Show initial notice with incremental update info and estimated time
             // Batches run in waves of `concurrency`, each wave taking about secondsPerBatch
             const batchSchedule = this.aiService.getBatchSchedule();
-            const batchCount = Math.ceil(filesToProcess.length / this.MAX_NOTES_PER_BATCH);
+            const batchCount = Math.ceil(filesToProcess.length / batchSchedule.batchSize);
             const waves = Math.ceil(batchCount / batchSchedule.concurrency);
             const estimatedMins = Math.max(1, Math.ceil(waves * batchSchedule.secondsPerBatch / 60));
             const initialMessage = isIncrementalUpdate
@@ -671,8 +670,8 @@ export class VaultSemanticAnalysisManager {
             let currentBatch: typeof fileDataList = [];
 
             for (const fileData of fileDataList) {
-                // If current batch is full (30 notes), start a new batch
-                if (currentBatch.length >= this.MAX_NOTES_PER_BATCH) {
+                // If current batch is full, start a new batch
+                if (currentBatch.length >= batchSchedule.batchSize) {
                     batches.push(currentBatch);
                     currentBatch = [fileData];
                 } else {

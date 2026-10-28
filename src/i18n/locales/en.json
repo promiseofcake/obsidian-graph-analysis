@@ -39,7 +39,36 @@
         "desc": "Absolute path to the aws binary (Obsidian does not inherit your shell PATH).",
         "placeholder": "/usr/local/bin/aws"
       },
-      "networkDisclosure": "When you run Vault Analysis or generate tab insights, the plugin sends note text and analysis prompts to AWS Bedrock (bedrock-runtime.<region>.amazonaws.com), signed with temporary credentials from your AWS CLI profile. Nothing is sent on plugin load."
+      "networkDisclosure": "When you run Vault Analysis or generate tab insights, the plugin sends note text and analysis prompts to AWS Bedrock (bedrock-runtime.<region>.amazonaws.com), signed with temporary credentials from your AWS CLI profile. Nothing is sent on plugin load.",
+      "tuning": {
+        "heading": "Batching and retries",
+        "desc": "How vault analysis batches are sent to Bedrock and how throttled requests are retried. The defaults suit most accounts; adjust if you hit throttling or want faster runs.",
+        "reset": "Reset to defaults",
+        "batchSize": {
+          "name": "Notes per batch",
+          "desc": "Notes sent in each request. Smaller batches finish faster and fail less, at the cost of a little repeated prompt per batch. {{min}}–{{max}}, default {{default}}."
+        },
+        "concurrency": {
+          "name": "Parallel batches",
+          "desc": "Batches sent at the same time. Raise for speed; lower if you see throttling. {{min}}–{{max}}, default {{default}}."
+        },
+        "batchDelay": {
+          "name": "Pause between batches (seconds)",
+          "desc": "Wait after each batch before starting the next. {{min}}–{{max}}, default {{default}}."
+        },
+        "maxAttempts": {
+          "name": "Max attempts per request",
+          "desc": "Total tries for a throttled or temporarily failing request, including the first. 1 disables retries. {{min}}–{{max}}, default {{default}}."
+        },
+        "backoffBase": {
+          "name": "First retry delay (seconds)",
+          "desc": "Upper bound of the wait before the first retry; it doubles each retry, with a random wait up to that bound. {{min}}–{{max}}, default {{default}}."
+        },
+        "backoffMax": {
+          "name": "Max retry delay (seconds)",
+          "desc": "Cap on the wait between retries. {{min}}–{{max}}, default {{default}}."
+        }
+      }
     },
     "geminiApiKey": {
       "name": "Gemini API key",

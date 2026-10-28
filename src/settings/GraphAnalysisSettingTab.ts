@@ -3,6 +3,7 @@ import GraphAnalysisPlugin from '../main';
 import { t } from '../i18n';
 import type { AiProvider, AiResponseLanguage, UiLanguage } from '../types/types';
 import { configureI18n } from '../i18n';
+import { BEDROCK_TUNING, BEDROCK_TUNING_DEFAULTS, parseTuningValue, resolveTuningValue } from '../services/BedrockTuning';
 
 export class GraphAnalysisSettingTab extends PluginSettingTab {
     plugin: GraphAnalysisPlugin;
@@ -144,7 +145,50 @@ export class GraphAnalysisSettingTab extends PluginSettingTab {
                     }));
         }
 
+        this.createBedrockTuningSettings(apiContainer);
         this.createNetworkDisclosure(apiContainer, t('settings.bedrock.networkDisclosure'));
+    }
+
+    /** Batching and retry knobs; invalid input is flagged and not saved. */
+    private createBedrockTuningSettings(apiContainer: HTMLElement): void {
+        new Setting(apiContainer)
+            .setClass('graph-settings-item')
+            .setName(t('settings.bedrock.tuning.heading'))
+            .setDesc(t('settings.bedrock.tuning.desc'))
+            .addButton(button => button
+                .setButtonText(t('settings.bedrock.tuning.reset'))
+                .onClick(async () => {
+                    Object.assign(this.plugin.settings, BEDROCK_TUNING_DEFAULTS);
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
+
+        for (const spec of BEDROCK_TUNING) {
+            new Setting(apiContainer)
+                .setClass('graph-settings-item')
+                .setName(t(`settings.bedrock.tuning.${spec.i18n}.name`))
+                .setDesc(t(`settings.bedrock.tuning.${spec.i18n}.desc`, {
+                    min: spec.min,
+                    max: spec.max,
+                    default: spec.defaultValue
+                }))
+                .addText(text => {
+                    text.inputEl.type = 'number';
+                    text.inputEl.min = String(spec.min);
+                    text.inputEl.max = String(spec.max);
+                    text.inputEl.step = spec.integer ? '1' : 'any';
+                    text.setPlaceholder(String(spec.defaultValue))
+                        .setValue(String(resolveTuningValue(spec, this.plugin.settings[spec.key])))
+                        .onChange(async (value) => {
+                            const parsed = parseTuningValue(spec, value);
+                            text.inputEl.toggleClass('graph-settings-invalid', parsed === null);
+                            if (parsed === null) return;
+                            this.plugin.settings[spec.key] = parsed;
+                            await this.plugin.saveSettings();
+                        });
+                    return text;
+                });
+        }
     }
 
     private createNetworkDisclosure(apiContainer: HTMLElement, desc: string): void {

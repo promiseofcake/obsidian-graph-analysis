@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import { BEDROCK_TUNING_DEFAULTS, type BedrockTuningKey } from '../services/BedrockTuning';
 
 // Plugin interface
 export interface IGraphAnalysisPlugin {
@@ -21,7 +22,8 @@ export type UiLanguage = PluginLanguageOption;
 
 export type AiProvider = 'gemini' | 'bedrock';
 
-export interface GraphAnalysisSettings {
+/** Includes the Bedrock batching/retry knobs (bedrockBatchSize, bedrockMaxAttempts, ...) defined in BedrockTuning. */
+export interface GraphAnalysisSettings extends Record<BedrockTuningKey, number> {
     excludeFolders: string[];
     excludeTags: string[];
     aiProvider: AiProvider;
@@ -43,6 +45,7 @@ export const DEFAULT_SETTINGS: GraphAnalysisSettings = {
     bedrockRegion: 'us-east-1',
     bedrockModelId: '',
     awsCliPath: '/usr/local/bin/aws',
+    ...BEDROCK_TUNING_DEFAULTS,
     aiResponseLanguage: 'auto',
     uiLanguage: 'auto'
 };
