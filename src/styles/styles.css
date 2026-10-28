@@ -1332,6 +1332,11 @@ body.graph-view-dragging .graph-view-svg {
   background-color: var(--text-muted);
 }
 
+.analysis-last-error {
+  color: var(--text-error);
+  word-break: break-word;
+}
+
 button.is-disabled {
   opacity: 0.5;
   cursor: not-allowed;

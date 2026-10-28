@@ -101,31 +101,37 @@ export async function bedrockConverseStructured(params: BedrockConverseParams): 
         json = undefined;
     }
 
+    const requestId = result.headers?.['x-amzn-requestid'] ?? result.headers?.['X-Amzn-RequestId'] ?? 'unknown';
+
     if (result.status < 200 || result.status >= 300) {
-        throw new Error(parseErrorBody(result.status, result.text, json));
+        throw new Error(`${parseErrorBody(result.status, result.text, json)} [requestId: ${requestId}]`);
     }
 
     const response = (json ?? {}) as ConverseResponse;
-    if (response.stopReason === 'max_tokens') {
-        throw new Error('Bedrock response truncated (max_tokens reached) - try fewer notes per batch');
-    }
-
     const text = (response.output?.message?.content ?? [])
         .map(c => c.text ?? '')
         .join('')
         .trim();
+    // Response metadata only (never prompt or output content), safe to persist and share
+    const diag = `[stopReason: ${response.stopReason ?? 'unknown'}, outputChars: ${text.length}, ` +
+        `outputTokens: ${response.usage?.outputTokens ?? '?'}/${params.maxTokens}, requestId: ${requestId}]`;
+
+    if (response.stopReason === 'max_tokens') {
+        throw new Error(`Bedrock response truncated at the output token limit ${diag}`);
+    }
     if (!text) {
-        throw new Error(`Empty structured response from Bedrock (stopReason: ${response.stopReason ?? 'unknown'})`);
+        throw new Error(`Empty structured response from Bedrock ${diag}`);
     }
 
     let parsed: { result?: unknown };
     try {
         parsed = JSON.parse(text) as { result?: unknown };
-    } catch (parseError) {
-        throw new Error(`Failed to parse Bedrock structured response: ${(parseError as Error).message}`);
+    } catch {
+        // SyntaxError messages quote part of the output, so report only that it was invalid
+        throw new Error(`Failed to parse Bedrock structured response: invalid JSON ${diag}`);
     }
     if (parsed.result === undefined) {
-        throw new Error('Bedrock structured response missing "result"');
+        throw new Error(`Bedrock structured response missing "result" ${diag}`);
     }
 
     return {

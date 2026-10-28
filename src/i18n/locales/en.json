@@ -193,6 +193,7 @@
     "processing": "Analysis is processing...",
     "updateAnalysis": "Update analysis",
     "generateAnalysis": "Generate analysis",
+    "lastAttemptFailed": "Last attempt failed ({{time}}, {{provider}} {{model}}): {{message}}",
     "privacyNote1": "This analysis uses Google Gemini AI to extract insights from your vault. We only send note summaries and metadata (keywords, domains, graph metrics) to the AI—never full note content. This protects your privacy and significantly reduces token usage.",
     "privacyNote2": "Before AI analysis, we use deterministic methods (graph theory, statistical analysis, kde distributions) to preprocess your vault data, ensuring accurate and efficient insights.",
     "loadingTitle": "Generating AI analysis",

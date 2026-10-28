@@ -37,6 +37,7 @@ export class AIModelService {
     private readonly ADVANCED_RATE_LIMIT_DELAY = 12000;
     private readonly MODEL_NAME = 'gemini-3-flash-preview';
     private readonly SEMANTIC_MODEL_NAME = 'gemini-3.1-flash-lite-preview'; // Default when no modelOverride
+    private readonly BEDROCK_MIN_MAX_TOKENS = 16384;
 
     private get isBedrock(): boolean {
         return this.settings?.aiProvider === 'bedrock';
@@ -109,7 +110,8 @@ export class AIModelService {
                 modelId: this.settings.bedrockModelId.trim(),
                 prompt,
                 responseSchema,
-                maxTokens: maxOutputTokens
+                // Every schema field is required on Bedrock, so outputs run longer; keep headroom
+                maxTokens: Math.max(maxOutputTokens, this.BEDROCK_MIN_MAX_TOKENS)
             });
             return {
                 data: response.data,

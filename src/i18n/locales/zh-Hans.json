@@ -193,6 +193,7 @@
     "processing": "分析进行中…",
     "updateAnalysis": "更新分析",
     "generateAnalysis": "生成分析",
+    "lastAttemptFailed": "上次生成失败（{{time}}，{{provider}} {{model}}）：{{message}}",
     "privacyNote1": "本分析使用 Google Gemini AI 从您的库中提取洞察。我们仅向 AI 发送笔记摘要和元数据（关键词、领域、图谱指标），从不发送完整笔记内容，以保护隐私并显著减少 token 用量。",
     "privacyNote2": "在 AI 分析之前，我们使用确定性方法（图论、统计分析、KDE 分布）预处理库数据，以确保准确高效的洞察。",
     "loadingTitle": "正在生成 AI 分析",

@@ -156,13 +156,20 @@ export default class GraphAnalysisPlugin extends Plugin {
     }
 
     async loadSettings() {
-        const data = await this.loadData() as Partial<GraphAnalysisSettings> | null;
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
+        const data = (await this.loadData() as Record<string, unknown> | null) ?? {};
+        // data.json also holds the analysis cache; keep only settings keys in memory
+        const settings: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+        for (const key of Object.keys(DEFAULT_SETTINGS)) {
+            if (key in data) settings[key] = data[key];
+        }
+        this.settings = settings as unknown as GraphAnalysisSettings;
         configureI18n(this.settings.uiLanguage);
     }
 
     async saveSettings() {
-        await this.saveData(this.settings);
+        // Merge settings into the current file so cached analyses written since load are kept
+        const data = (await this.loadData() as Record<string, unknown> | null) ?? {};
+        await this.saveData({ ...data, ...this.settings });
         configureI18n(this.settings.uiLanguage);
         // Update Vault Analysis Manager settings
         if (this.vaultAnalysisManager) {

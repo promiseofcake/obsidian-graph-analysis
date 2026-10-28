@@ -3,7 +3,8 @@ import type { TabAnalysisData, VaultAnalysisData } from '../ai/MasterAnalysisMan
 import type {
     DerivedVisualizationsData,
     FailedBatchesData,
-    PluginCacheData
+    PluginCacheData,
+    TabAnalysisError
 } from '../types/plugin-cache-data';
 
 export interface PluginDataHost {
@@ -67,6 +68,28 @@ export class PluginDataStore {
             cache.tabAnalyses = {};
         }
         cache.tabAnalyses[tabName] = data;
+        await this.write(cache);
+    }
+
+    async getTabAnalysisError(tabName: string): Promise<TabAnalysisError | null> {
+        return (await this.read()).tabAnalysisErrors?.[tabName] ?? null;
+    }
+
+    async setTabAnalysisError(tabName: string, error: TabAnalysisError): Promise<void> {
+        const cache = await this.read();
+        if (!cache.tabAnalysisErrors) {
+            cache.tabAnalysisErrors = {};
+        }
+        cache.tabAnalysisErrors[tabName] = error;
+        await this.write(cache);
+    }
+
+    async clearTabAnalysisError(tabName: string): Promise<void> {
+        const cache = await this.read();
+        if (!cache.tabAnalysisErrors?.[tabName]) {
+            return;
+        }
+        delete cache.tabAnalysisErrors[tabName];
         await this.write(cache);
     }
 

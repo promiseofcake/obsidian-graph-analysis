@@ -1025,7 +1025,10 @@ export class VaultSemanticAnalysisManager {
         return file.path.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     }
 
-    private readonly FAILED_BATCHES_EMPTY: FailedBatchesData = { remaining: null, failed: [] };
+    // Fresh object each call: callers push into `failed`, so a shared constant would accumulate entries
+    private emptyFailedBatches(): FailedBatchesData {
+        return { remaining: null, failed: [] };
+    }
 
     private async getFailedBatchFilePaths(): Promise<string[]> {
         try {
@@ -1048,13 +1051,13 @@ export class VaultSemanticAnalysisManager {
     }
 
     private async clearFailedBatches(): Promise<void> {
-        await this.dataStore.setFailedBatches(this.FAILED_BATCHES_EMPTY);
+        await this.dataStore.setFailedBatches(this.emptyFailedBatches());
     }
 
     private async readFailedBatchesData(): Promise<FailedBatchesData> {
         const raw = await this.dataStore.getFailedBatches();
         if (!raw) {
-            return this.FAILED_BATCHES_EMPTY;
+            return this.emptyFailedBatches();
         }
         if (raw.remaining != null || Array.isArray(raw.failed)) {
             return { remaining: raw.remaining ?? null, failed: raw.failed ?? [] };
