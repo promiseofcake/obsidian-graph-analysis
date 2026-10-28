@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Bedrock batching and retry settings**: a new "Batching and retries" section under the Bedrock settings sets notes per batch (1–50), parallel batches (1–10), pause between batches (0–60s), max attempts per request (1–10), first retry delay (0.5–30s) and max retry delay (1–300s), with **Reset to defaults**. Defaults match 0.7.0. Invalid input is flagged and not saved; stored values are clamped at runtime. Gemini's schedule is unchanged.
+
 ## [0.7.0]
 
 First release of the promiseofcake fork.
