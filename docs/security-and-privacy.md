@@ -5,14 +5,25 @@ This document supports community plugin review and explains automated scanner fi
 ## What the plugin does with your data
 
 - **Local by default:** Graph metrics (Rust/WebAssembly), vault analysis caches, and derived chart data are stored via Obsidian `loadData` / `saveData` on your device.
-- **Optional cloud AI:** If you configure a Gemini API key and run Vault Analysis, note content and prompts are sent to Google’s Generative Language API using **your** key. Nothing is sent on plugin load.
+- **Optional cloud AI, one provider at a time:** when you run Vault Analysis or a tab analysis, note content and prompts are sent to the provider selected in settings. Nothing is sent on plugin load.
+  - **Google Gemini** (default): Google's Generative Language API, using **your** API key.
+  - **AWS Bedrock**: Bedrock in **your** AWS account, signed with temporary credentials from your AWS CLI profile.
 - **No plugin backend:** There is no first-party server; the plugin does not collect analytics.
 
 ## Network access
 
 | Trigger | Endpoint | Mechanism |
 |---------|----------|-----------|
-| User runs Vault Analysis / tab AI | `generativelanguage.googleapis.com` | Obsidian [`requestUrl`](https://docs.obsidian.md/Reference/TypeScript+API/requestUrl) only ([`src/services/GeminiRestClient.ts`](../src/services/GeminiRestClient.ts)) |
+| Vault Analysis / tab AI, provider = Gemini | `generativelanguage.googleapis.com` | Obsidian [`requestUrl`](https://docs.obsidian.md/Reference/TypeScript+API/requestUrl) only ([`src/services/GeminiRestClient.ts`](../src/services/GeminiRestClient.ts)) |
+| Vault Analysis / tab AI, provider = Bedrock | `bedrock-runtime.<region>.amazonaws.com` (`POST /model/<id>/converse`) | Obsidian `requestUrl` only, SigV4-signed with `@smithy/signature-v4` ([`src/services/BedrockRestClient.ts`](../src/services/BedrockRestClient.ts)) |
+| Bedrock credentials (before the first Bedrock call, then about hourly) | None from the plugin. The AWS CLI may call AWS STS or IAM Identity Center itself. | Local `child_process.execFile` of the configured `aws` binary: `aws configure export-credentials --profile <p> --format process` ([`src/services/AwsCliCredentials.ts`](../src/services/AwsCliCredentials.ts)) |
+
+### Bedrock credential handling
+
+- The plugin never stores AWS keys. Settings hold only the profile name, region, model ID, and CLI path.
+- Temporary credentials from the CLI are kept in memory, refreshed 5 minutes before they expire, and shared by concurrent requests.
+- Error messages include only the CLI's stderr, never its stdout (which contains the credentials).
+- Bedrock error messages saved to `data.json` contain the status, AWS request ID, stop reason and output size, never prompt or output text.
 
 See also the **Privacy and network** section in [README.md](../README.md) and the disclosure in plugin settings.
 
@@ -20,7 +31,7 @@ See also the **Privacy and network** section in [README.md](../README.md) and th
 
 Community scanners often count substrings in the minified `main.js` bundle.
 
-- **`fetch(`** — Release builds do not bundle `@google/genai`; Gemini calls use `requestUrl` only. Any remaining `fetch(` matches are unrelated (e.g. minified helper names) and should be zero or minimal after `npm run audit:bundle`.
+- **`fetch(`** — Release builds do not bundle `@google/genai` or an AWS SDK client; Gemini and Bedrock calls use `requestUrl` only. Any remaining `fetch(` matches are unrelated (e.g. minified helper names) and should be zero or minimal after `npm run audit:bundle`.
 - **`request`** — Most matches are **not** HTTP calls, for example:
   - `requestAnimationFrame` (graph view rendering)
   - `requestUrl` (Obsidian API name in strings or types)
@@ -45,12 +56,16 @@ We do **not** strip the memory export from the binary; doing so would break wasm
 ## PR appendix (copy-paste for reviewers)
 
 ```
-Network: Gemini API only when the user runs Vault Analysis (user API key, requestUrl only).
-fetch/atob/btoa: not present in release main.js (Gemini REST client + embedded WASM bytes).
+Network: the user's selected AI provider only, when the user runs Vault Analysis or a tab analysis. Gemini: user API key. Bedrock: SigV4 with temporary credentials from the user's AWS CLI profile. requestUrl only in both cases.
+Local process: Bedrock credentials come from `aws configure export-credentials` via child_process.execFile (desktop-only plugin).
+fetch/atob/btoa: not present in release main.js (REST clients + embedded WASM bytes).
 request substring counts include false positives (requestAnimationFrame, requestUrl identifier).
 WASM memory export: standard wasm-bindgen; no direct host memory access in plugin code.
 ```
 
-## Gemini client implementation
+## AI client implementation
 
-The plugin uses a thin REST client ([`GeminiRestClient.ts`](../src/services/GeminiRestClient.ts)) instead of `@google/genai`, so the release bundle avoids SDK `fetch`/`atob` helpers used for inline media encoding.
+The plugin uses thin REST clients instead of vendor SDKs, so the release bundle avoids SDK `fetch`/`atob` helpers:
+
+- **Gemini:** [`GeminiRestClient.ts`](../src/services/GeminiRestClient.ts) instead of `@google/genai`.
+- **Bedrock:** [`BedrockRestClient.ts`](../src/services/BedrockRestClient.ts) instead of `@aws-sdk/client-bedrock-runtime`. Only the SigV4 signer (`@smithy/signature-v4`, `@aws-crypto/sha256-js`) is bundled; it makes no network calls.

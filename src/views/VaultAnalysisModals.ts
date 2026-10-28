@@ -1972,7 +1972,7 @@ export class VaultAnalysisInfoModal extends Modal {
         const featureList = infoContainer.createEl('ul');
         
         const features = [
-            'One-sentence summaries for each note',
+            'Two to three sentence summaries for each note',
             'Key terms and phrases extraction',
             'Knowledge domain classification',
             'Metadata including word count and dates',
