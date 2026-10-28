@@ -77,9 +77,9 @@ if (atobCount > 0 || btoaCount > 0) {
 if (!failed) {
   console.log('PASS: no atob/btoa in bundle.');
   if (fetchCount > 0) {
-    console.log('Note: fetch( count > 0 — inspect samples; Gemini uses requestUrl only (see docs/security-and-privacy.md).');
+    console.log('Note: fetch( count > 0 — inspect samples; Gemini and Bedrock use requestUrl only (see docs/security-and-privacy.md).');
   } else {
-    console.log('fetch(: 0 — Gemini REST uses requestUrl only.');
+    console.log('fetch(: 0 — Gemini and Bedrock REST clients use requestUrl only.');
   }
 }
 

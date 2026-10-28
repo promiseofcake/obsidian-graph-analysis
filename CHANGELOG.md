@@ -19,6 +19,8 @@ First release of the promiseofcake fork.
 - **Bedrock batch scheduling**: vault analysis runs 3 batches concurrently with no gap between them (Gemini keeps one at a time with a 6s gap). Bedrock throttling and transient 5xx errors retry with exponential backoff and jitter, up to 5 attempts. Daily-quota and client errors fail fast. The tab-analysis rate-limit retry no longer recurses forever on Bedrock. Concurrent callers share one AWS CLI credential fetch.
 - The analysis results record the provider that actually ran, instead of always "Google Gemini".
 - Fork attribution: the README fork notice, package/manifest author, and repo links point to `promiseofcake/obsidian-graph-analysis`. The original MIT notice is kept.
+- **Docs:** the README covers Bedrock setup, how it works, troubleshooting, pricing, privacy, performance, installing the fork (BRAT, release download, from source) and releasing. `SECURITY.md` and `docs/security-and-privacy.md` now list the Bedrock endpoint, the local AWS CLI process, and note writes. Several stale claims were corrected: the status bar entry point, one-sentence summaries, and a "single consolidated call for tabs 2–4".
+- In-app provider text no longer says Gemini only: the tab privacy note, the requirements list, and the Chinese "configure provider" notice.
 
 ### Fixed
 
