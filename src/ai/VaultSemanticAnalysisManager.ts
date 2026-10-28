@@ -442,12 +442,12 @@ export class VaultSemanticAnalysisManager {
         newResults: VaultAnalysisResult[],
         deletedFilePaths: string[]
     ): VaultAnalysisResult[] {
-        // Start with unchanged results
-        const mergedResults = [...unchangedResults];
-        
-        // Add new/updated results
-        mergedResults.push(...newResults);
-        
+        // Key by path so a new/updated result replaces an existing one instead of duplicating it
+        const byPath = new Map<string, VaultAnalysisResult>();
+        for (const result of unchangedResults) byPath.set(result.path, result);
+        for (const result of newResults) byPath.set(result.path, result);
+        const mergedResults = [...byPath.values()];
+
         // Remove deleted files from the merged results
         const deletedPathsSet = new Set(deletedFilePaths);
         const beforeFilterCount = mergedResults.length;
@@ -572,8 +572,10 @@ export class VaultSemanticAnalysisManager {
             // Append failed-batch files at the end (for resume)
             const failedPaths = await this.getFailedBatchFilePaths();
             const inFilesToProcess = new Set(filesToProcess.map(f => f.path));
+            // Notes with a current result already succeeded since they failed; don't re-analyze them
+            const alreadyAnalyzed = new Set(unchangedResults.map(r => r.path));
             for (const path of failedPaths) {
-                if (inFilesToProcess.has(path)) continue;
+                if (inFilesToProcess.has(path) || alreadyAnalyzed.has(path)) continue;
                 const file = this.app.vault.getAbstractFileByPath(path);
                 const includedPaths = new Set(this.getIncludedMarkdownFiles().map((f) => f.path));
                 if (file instanceof TFile && includedPaths.has(path)) {

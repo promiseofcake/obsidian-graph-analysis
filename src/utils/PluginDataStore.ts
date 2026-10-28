@@ -38,7 +38,17 @@ export class PluginDataStore {
     }
 
     async getVaultAnalysis(): Promise<VaultAnalysisData | null> {
-        return (await this.read()).vaultAnalysis ?? null;
+        const analysis = (await this.read()).vaultAnalysis ?? null;
+        if (!analysis?.results) {
+            return analysis;
+        }
+        // Repair caches written by older builds that appended duplicate rows per path (last wins)
+        const byPath = new Map(analysis.results.map(r => [r.path, r]));
+        if (byPath.size === analysis.results.length) {
+            return analysis;
+        }
+        const results = [...byPath.values()];
+        return { ...analysis, results, totalFiles: results.length };
     }
 
     async setVaultAnalysis(data: VaultAnalysisData): Promise<void> {
