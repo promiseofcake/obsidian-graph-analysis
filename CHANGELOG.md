@@ -5,7 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0]
+
+First release of the promiseofcake fork.
+
+### Added
+
+- **AWS Bedrock provider (optional)**: choose Gemini or Bedrock in settings. Bedrock credentials come from an AWS CLI profile via `aws configure export-credentials` (assumed-role STS credentials, held in memory only). Inference calls Bedrock Converse directly through `requestUrl`, SigV4-signed, with native JSON-schema structured output.
+- **Tab analysis error reporting**: failed Structure, Evolution or Actions runs are saved to `tabAnalysisErrors` and shown in the tab. Bedrock errors include the status, request ID, stop reason and output size, never prompt or note content.
+
+### Changed
+
+- **Bedrock batch scheduling**: vault analysis runs 3 batches concurrently with no gap between them (Gemini keeps one at a time with a 6s gap). Bedrock throttling and transient 5xx errors retry with exponential backoff and jitter, up to 5 attempts. Daily-quota and client errors fail fast. The tab-analysis rate-limit retry no longer recurses forever on Bedrock. Concurrent callers share one AWS CLI credential fetch.
+- The analysis results record the provider that actually ran, instead of always "Google Gemini".
+- Fork attribution: the README fork notice, package/manifest author, and repo links point to `promiseofcake/obsidian-graph-analysis`. The original MIT notice is kept.
+
+### Fixed
+
+- **Settings saves overwrote cached analyses**: `saveSettings` wrote back the `data.json` snapshot from plugin load, wiping tab analyses and restoring stale failed batches.
+- **Concurrent `data.json` writes clobbered each other**: all reads and writes are now serialized, so the background visualization save no longer undoes a failed-batch clear.
+- **Incremental runs duplicated results**: results merge by path, already-analyzed failed notes aren't re-queued, and existing duplicate caches are deduped on read.
+- **Stale failed batches**: the shared "empty" object accumulated entries, and failed batches that had since succeeded were never cleared.
+
+## [0.6.1 – 0.6.7] (upstream)
+
+Upstream left these under "Unreleased", but they shipped in 0.6.x before the fork.
 
 ### Removed
 

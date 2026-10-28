@@ -1,11 +1,13 @@
 # Knowledge Graph Analysis
 
+> **Fork notice:** this is a fork of [luolanaaTUD/obsidian-graph-analysis](https://github.com/luolanaaTUD/obsidian-graph-analysis) by wluo, maintained by Lucas Kacher. It adds AWS Bedrock as an optional AI provider (credentials from an AWS CLI profile, inference via Bedrock Converse) and fixes several cache bugs: settings saves overwriting cached analyses, duplicate results on incremental runs, and concurrent `data.json` writes clobbering each other. Gemini remains the default provider.
+
 Turns your [Obsidian](https://obsidian.md) vault into a knowledge graph, computes real graph-theory metrics locally (degree, betweenness, closeness, eigenvector centrality), and feeds those metrics to AI (Google Gemini) to produce semantic analysis, structural analysis, evolution tracking, and one-click actionable suggestions.
 
 Open the plugin by clicking the plugin icon <img src="docs/images/waypoints-icon.svg" alt="network icon" width="20" height="20" style="vertical-align: middle" /> in the left ribbon.
 
   
-![Knowledge Graph Analysis demo](https://raw.githubusercontent.com/luolanaaTUD/obsidian-graph-analysis/main/docs/images/plugin-demo.gif)
+![Knowledge Graph Analysis demo](docs/images/plugin-demo.gif)
 
 ---
 
@@ -139,7 +141,7 @@ The plugin batches Tabs 2–4 into a single consolidated AI call, reducing token
 |Obsidian version|1.7.2+|
 |Platforms|Desktop only (Windows / macOS / Linux) — **no mobile support**|
 |Install (recommended)|Settings → Community plugins → search "Knowledge Graph Analysis"|
-|Install (manual)|Download from [GitHub Releases](https://github.com/luolanaaTUD/obsidian-graph-analysis/releases) → extract into `.obsidian/plugins/` → enable in settings|
+|Install (manual)|Download from [GitHub Releases](https://github.com/promiseofcake/obsidian-graph-analysis/releases) → extract into `.obsidian/plugins/` → enable in settings|
 |Prerequisite for AI features|A Gemini API key; not required for local graph visualization|
 
 ---
@@ -179,7 +181,7 @@ No plugin-owned backend server. All caches (semantic results, derived charts, ta
   
 
 ```bash
-git clone https://github.com/luolanaaTUD/obsidian-graph-analysis.git
+git clone https://github.com/promiseofcake/obsidian-graph-analysis.git
 cd obsidian-graph-analysis
 npm install
 npm run build
@@ -207,7 +209,7 @@ npm run lint:fix # auto-fix where supported
 
 ## Contributing
 
-Contributions are welcome. Open issues or pull requests on [github.com/luolanaaTUD/obsidian-graph-analysis](https://github.com/luolanaaTUD/obsidian-graph-analysis).
+Contributions are welcome. Open issues or pull requests on [github.com/promiseofcake/obsidian-graph-analysis](https://github.com/promiseofcake/obsidian-graph-analysis). Changes that apply to the original plugin can also go upstream to [luolanaaTUD/obsidian-graph-analysis](https://github.com/luolanaaTUD/obsidian-graph-analysis).
 
   
 

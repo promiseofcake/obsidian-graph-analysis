@@ -13,6 +13,7 @@ import { KDECalculationService } from '../utils/KDECalculationService';
 import { NoteResolver } from '../utils/NoteResolver';
 import { AIContextPreparationService } from '../services/AIContextPreparationService';
 import { PluginDataStore } from '../utils/PluginDataStore';
+import type { TabAnalysisError } from '../types/plugin-cache-data';
 
 export interface VaultAnalysisResult {
     id: string;
@@ -320,7 +321,7 @@ ${formattedContext}`;
             const tabData: StructureAnalysisData = {
                 generatedAt: new Date().toISOString(),
                 sourceAnalysisId: this.generateAnalysisId(analysisData),
-                apiProvider: 'Google Gemini',
+                apiProvider: this.aiService.getProviderLabel(),
                 knowledgeStructure: structureData
             };
             
@@ -330,6 +331,7 @@ ${formattedContext}`;
             return tabData;
         } catch (error) {
             // console.error('Failed to generate Knowledge Structure Analysis:', error);
+            await this.recordTabAnalysisError('structure', error);
             if (error instanceof SemanticAnalysisError && error.errorType === 'quota_exhausted') {
                 new Notice(getUserFriendlyMessage(error));
             }
@@ -371,8 +373,31 @@ ${formattedContext}`;
     public async cacheTabAnalysis(tabName: string, data: TabAnalysisData): Promise<void> {
         try {
             await this.dataStore.setTabAnalysis(tabName, data);
+            await this.dataStore.clearTabAnalysisError(tabName);
         } catch {
             // Cache write may fail; caller can retry
+        }
+    }
+
+    public async getTabAnalysisError(tabName: string): Promise<TabAnalysisError | null> {
+        try {
+            return await this.dataStore.getTabAnalysisError(tabName);
+        } catch {
+            return null;
+        }
+    }
+
+    /** Persist the last failure for a tab so it survives the transient Notice. */
+    private async recordTabAnalysisError(tabName: string, error: unknown): Promise<void> {
+        try {
+            await this.dataStore.setTabAnalysisError(tabName, {
+                timestamp: new Date().toISOString(),
+                provider: this.aiService.getProviderLabel(),
+                model: this.aiService.getModelName(),
+                message: error instanceof Error ? error.message : String(error)
+            });
+        } catch {
+            // Best effort; the Notice still reports the error
         }
     }
 
@@ -440,7 +465,7 @@ ${formattedContext}`;
             const tabData: EvolutionAnalysisData = {
                 generatedAt: new Date().toISOString(),
                 sourceAnalysisId: this.generateAnalysisId(analysisData),
-                apiProvider: 'Google Gemini',
+                apiProvider: this.aiService.getProviderLabel(),
                 knowledgeEvolution: evolutionData
             };
 
@@ -450,6 +475,7 @@ ${formattedContext}`;
             return tabData;
         } catch (error) {
             // console.error('Failed to generate Knowledge Evolution Analysis:', error);
+            await this.recordTabAnalysisError('evolution', error);
             if (error instanceof SemanticAnalysisError && error.errorType === 'quota_exhausted') {
                 new Notice(getUserFriendlyMessage(error));
             }
@@ -579,7 +605,7 @@ ${formattedContext}`;
             const tabData: ActionsAnalysisData = {
                 generatedAt: new Date().toISOString(),
                 sourceAnalysisId: this.generateAnalysisId(analysisData),
-                apiProvider: 'Google Gemini',
+                apiProvider: this.aiService.getProviderLabel(),
                 recommendedActions: actionsData
             };
 
@@ -589,6 +615,7 @@ ${formattedContext}`;
             return tabData;
         } catch (error) {
             // console.error('Failed to generate Recommended Actions Analysis:', error);
+            await this.recordTabAnalysisError('actions', error);
             if (error instanceof SemanticAnalysisError && error.errorType === 'quota_exhausted') {
                 new Notice(getUserFriendlyMessage(error));
             }

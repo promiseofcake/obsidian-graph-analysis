@@ -41,6 +41,8 @@ export default class GraphAnalysisPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
+        // Created first: every data.json write (settings, WASM hash, caches) goes through its write queue
+        this.dataStore = new PluginDataStore(this);
 
         // Initialize exclusion utils and vault scope
         this.exclusionUtils = new ExclusionUtils(this.app, this.settings);
@@ -104,7 +106,6 @@ export default class GraphAnalysisPlugin extends Plugin {
             callback: () => this.showExclusionStats()
         });
 
-        this.dataStore = new PluginDataStore(this);
         await this.dataStore.migrateLegacyCacheFromVaultFiles(this.app);
 
         // Initialize Vault Analysis Manager (no status bar button - now in graph view)
@@ -156,13 +157,20 @@ export default class GraphAnalysisPlugin extends Plugin {
     }
 
     async loadSettings() {
-        const data = await this.loadData() as Partial<GraphAnalysisSettings> | null;
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
+        const data = (await this.loadData() as Record<string, unknown> | null) ?? {};
+        // data.json also holds the analysis cache; keep only settings keys in memory
+        const settings: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+        for (const key of Object.keys(DEFAULT_SETTINGS)) {
+            if (key in data) settings[key] = data[key];
+        }
+        this.settings = settings as unknown as GraphAnalysisSettings;
         configureI18n(this.settings.uiLanguage);
     }
 
     async saveSettings() {
-        await this.saveData(this.settings);
+        // Merge settings into the current file so cached analyses written since load are kept
+        const settings = this.settings;
+        await this.dataStore!.update(data => { Object.assign(data, settings); });
         configureI18n(this.settings.uiLanguage);
         // Update Vault Analysis Manager settings
         if (this.vaultAnalysisManager) {
@@ -197,9 +205,7 @@ export default class GraphAnalysisPlugin extends Plugin {
 
                 await __wbg_init({ module_or_path: wasmBinary });
                 
-                const dataToSave = (await this.loadData() as Record<string, unknown>) || {};
-                dataToSave.wasmHash = wasmBinaryHash;
-                await this.saveData(dataToSave);
+                await this.dataStore!.update(data => { data.wasmHash = wasmBinaryHash; });
                 
                 this.wasmInitialized = true;
                 // console.log('Graph Analysis: WASM initialized');

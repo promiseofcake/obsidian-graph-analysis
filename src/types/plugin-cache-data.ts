@@ -42,10 +42,20 @@ export interface DerivedVisualizationsData {
     calendar: SerializedCalendarDay[];
 }
 
+/** Last failed attempt to generate a tab analysis (cleared on the next success). */
+export interface TabAnalysisError {
+    timestamp: string;
+    provider: string;
+    model: string;
+    /** Error text only; never prompt or note contents */
+    message: string;
+}
+
 /** Plugin cache persisted via Plugin.loadData / saveData (no direct fs or vault.adapter). */
 export interface PluginCacheData {
     vaultAnalysis?: VaultAnalysisData;
     failedBatches?: FailedBatchesData;
     tabAnalyses?: Record<string, TabAnalysisData>;
+    tabAnalysisErrors?: Record<string, TabAnalysisError>;
     derivedVisualizations?: DerivedVisualizationsData;
 }

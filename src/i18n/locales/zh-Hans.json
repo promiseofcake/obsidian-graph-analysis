@@ -12,6 +12,35 @@
       "placeholder": "Private,draft,archive"
     },
     "llmHeading": "大语言模型配置",
+    "aiProvider": {
+      "name": "AI 服务提供方",
+      "desc": "AI 分析请求的发送目标。",
+      "gemini": "Google Gemini（API 密钥）",
+      "bedrock": "AWS Bedrock（AWS CLI 配置文件）"
+    },
+    "bedrock": {
+      "awsProfile": {
+        "name": "AWS 配置文件",
+        "desc": "~/.aws/config 中的配置文件。凭证通过 `aws configure export-credentials` 获取，仅保存在内存中。",
+        "placeholder": "my-bedrock-role"
+      },
+      "region": {
+        "name": "AWS 区域",
+        "desc": "Bedrock 运行时端点所在区域。",
+        "placeholder": "us-east-1"
+      },
+      "modelId": {
+        "name": "模型或推理配置文件 ID",
+        "desc": "Bedrock 模型 ID、推理配置文件 ID 或推理配置文件 ARN。",
+        "placeholder": "us.anthropic.claude-sonnet-..."
+      },
+      "cliPath": {
+        "name": "AWS CLI 路径",
+        "desc": "aws 可执行文件的绝对路径（Obsidian 不会继承 shell 的 PATH）。",
+        "placeholder": "/usr/local/bin/aws"
+      },
+      "networkDisclosure": "当您运行库分析或生成标签页洞察时，插件会使用 AWS CLI 配置文件的临时凭证签名，将笔记内容与分析提示发送至 AWS Bedrock（bedrock-runtime.<region>.amazonaws.com）。插件加载时不会发送任何数据。"
+    },
     "geminiApiKey": {
       "name": "Gemini API 密钥",
       "descPrefix": "您的 Google Gemini API 密钥。",
@@ -164,6 +193,7 @@
     "processing": "分析进行中…",
     "updateAnalysis": "更新分析",
     "generateAnalysis": "生成分析",
+    "lastAttemptFailed": "上次生成失败（{{time}}，{{provider}} {{model}}）：{{message}}",
     "privacyNote1": "本分析使用 Google Gemini AI 从您的库中提取洞察。我们仅向 AI 发送笔记摘要和元数据（关键词、领域、图谱指标），从不发送完整笔记内容，以保护隐私并显著减少 token 用量。",
     "privacyNote2": "在 AI 分析之前，我们使用确定性方法（图论、统计分析、KDE 分布）预处理库数据，以确保准确高效的洞察。",
     "loadingTitle": "正在生成 AI 分析",

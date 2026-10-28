@@ -1119,6 +1119,22 @@ export class VaultAnalysisModal extends Modal {
         statusIndicator.createSpan({ cls: 'status-dot' });
         statusIndicator.appendText(' Analysis not generated yet');
 
+        // Surface the last persisted failure so an empty tab isn't silent
+        if (tabName === 'structure' || tabName === 'evolution' || tabName === 'actions') {
+            void this.masterAnalysisManager.getTabAnalysisError(tabName).then(lastError => {
+                if (!lastError) return;
+                infoContainer.createEl('p', {
+                    text: t('vaultAnalysis.lastAttemptFailed', {
+                        time: new Date(lastError.timestamp).toLocaleString(),
+                        provider: lastError.provider,
+                        model: lastError.model,
+                        message: lastError.message
+                    }),
+                    cls: 'analysis-info-text analysis-last-error'
+                });
+            });
+        }
+
         const analysisButton = buttonContainer.createEl('button', {
             cls: 'mod-cta',
             text: t('vaultAnalysis.generateAnalysis')

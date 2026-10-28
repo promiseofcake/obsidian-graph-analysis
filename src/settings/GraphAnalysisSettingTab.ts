@@ -1,7 +1,7 @@
 import { App, PluginSettingTab, Setting, Modal } from 'obsidian';
 import GraphAnalysisPlugin from '../main';
 import { t } from '../i18n';
-import type { AiResponseLanguage, UiLanguage } from '../types/types';
+import type { AiProvider, AiResponseLanguage, UiLanguage } from '../types/types';
 import { configureI18n } from '../i18n';
 
 export class GraphAnalysisSettingTab extends PluginSettingTab {
@@ -52,6 +52,34 @@ export class GraphAnalysisSettingTab extends PluginSettingTab {
         new Setting(containerEl).setName(t('settings.llmHeading')).setHeading();
         const apiContainer = containerEl.createDiv({ cls: 'graph-settings-section-container' });
 
+        new Setting(apiContainer)
+            .setClass('graph-settings-item')
+            .setName(t('settings.aiProvider.name'))
+            .setDesc(t('settings.aiProvider.desc'))
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption('gemini', t('settings.aiProvider.gemini'))
+                    .addOption('bedrock', t('settings.aiProvider.bedrock'))
+                    .setValue(this.plugin.settings.aiProvider)
+                    .onChange(async (value) => {
+                        this.plugin.settings.aiProvider = value as AiProvider;
+                        await this.plugin.saveSettings();
+                        this.display();
+                    });
+                return dropdown;
+            });
+
+        if (this.plugin.settings.aiProvider === 'bedrock') {
+            this.createBedrockSettings(apiContainer);
+        } else {
+            this.createGeminiSettings(apiContainer);
+        }
+
+        new Setting(containerEl).setName(t('settings.languageHeading')).setHeading();
+        this.createLanguageSettings(containerEl);
+    }
+
+    private createGeminiSettings(apiContainer: HTMLElement): void {
         let apiKeyTextComponent: { inputEl: HTMLInputElement };
         new Setting(apiContainer)
             .setClass('graph-settings-item')
@@ -92,15 +120,44 @@ export class GraphAnalysisSettingTab extends PluginSettingTab {
                 return btn;
             });
 
+        this.createNetworkDisclosure(apiContainer, t('settings.networkDisclosure.desc'));
+    }
+
+    private createBedrockSettings(apiContainer: HTMLElement): void {
+        const fields: Array<{ key: 'bedrockAwsProfile' | 'bedrockRegion' | 'bedrockModelId' | 'awsCliPath'; i18n: string }> = [
+            { key: 'bedrockAwsProfile', i18n: 'awsProfile' },
+            { key: 'bedrockRegion', i18n: 'region' },
+            { key: 'bedrockModelId', i18n: 'modelId' },
+            { key: 'awsCliPath', i18n: 'cliPath' }
+        ];
+        for (const field of fields) {
+            new Setting(apiContainer)
+                .setClass('graph-settings-item')
+                .setName(t(`settings.bedrock.${field.i18n}.name`))
+                .setDesc(t(`settings.bedrock.${field.i18n}.desc`))
+                .addText(text => text
+                    .setPlaceholder(t(`settings.bedrock.${field.i18n}.placeholder`))
+                    .setValue(this.plugin.settings[field.key])
+                    .onChange(async (value) => {
+                        this.plugin.settings[field.key] = value.trim();
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        this.createNetworkDisclosure(apiContainer, t('settings.bedrock.networkDisclosure'));
+    }
+
+    private createNetworkDisclosure(apiContainer: HTMLElement, desc: string): void {
         const networkDisclosureSetting = new Setting(apiContainer)
             .setName(t('settings.networkDisclosure.name'))
-            .setDesc(t('settings.networkDisclosure.desc'));
+            .setDesc(desc);
         networkDisclosureSetting.settingEl.addClasses([
             'graph-settings-item',
             'graph-settings-network-disclosure'
         ]);
+    }
 
-        new Setting(containerEl).setName(t('settings.languageHeading')).setHeading();
+    private createLanguageSettings(containerEl: HTMLElement): void {
         const languageContainer = containerEl.createDiv({ cls: 'graph-settings-section-container' });
 
         new Setting(languageContainer)

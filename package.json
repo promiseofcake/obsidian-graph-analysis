@@ -1,6 +1,6 @@
 {
   "name": "obsidian-graph-analysis",
-  "version": "0.6.7",
+  "version": "0.7.0",
   "description": "Analyze Obsidian vault using graph algorithms to provide insights into note structure and relationships",
   "main": "dist/main.js",
   "scripts": {
@@ -32,16 +32,19 @@
     "analysis",
     "centrality"
   ],
-  "author": "wluo",
+  "author": "Lucas Kacher",
+  "contributors": [
+    "wluo (original author, https://github.com/luolanaaTUD/obsidian-graph-analysis)"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luolanaaTUD/obsidian-graph-analysis"
+    "url": "https://github.com/promiseofcake/obsidian-graph-analysis"
   },
   "bugs": {
-    "url": "https://github.com/luolanaaTUD/obsidian-graph-analysis/issues"
+    "url": "https://github.com/promiseofcake/obsidian-graph-analysis/issues"
   },
-  "homepage": "https://github.com/luolanaaTUD/obsidian-graph-analysis#readme",
+  "homepage": "https://github.com/promiseofcake/obsidian-graph-analysis#readme",
   "tagVersionPrefix": "",
   "devDependencies": {
     "@types/chroma-js": "^3.1.1",
@@ -64,6 +67,8 @@
     "@protobufjs/utf8": "^1.1.1"
   },
   "dependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@smithy/signature-v4": "^5.7.4",
     "@types/d3": "^7.4.3",
     "chroma-js": "^3.1.2",
     "d3": "^7.9.0",

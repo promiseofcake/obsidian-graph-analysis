@@ -3,7 +3,8 @@ import type { TabAnalysisData, VaultAnalysisData } from '../ai/MasterAnalysisMan
 import type {
     DerivedVisualizationsData,
     FailedBatchesData,
-    PluginCacheData
+    PluginCacheData,
+    TabAnalysisError
 } from '../types/plugin-cache-data';
 
 export interface PluginDataHost {
@@ -22,7 +23,26 @@ const LEGACY_PATHS = {
 } as const;
 
 export class PluginDataStore {
+    /** Tail of the write chain; every read-modify-write runs after the previous one finishes. */
+    private pendingWrite: Promise<void> = Promise.resolve();
+
     constructor(private readonly host: PluginDataHost) {}
+
+    /**
+     * Serialized read-modify-write of data.json. Concurrent setters (e.g. the background
+     * derived-visualizations save) would otherwise write back a stale copy and drop other keys.
+     * Return false from mutate to skip the write.
+     */
+    update(mutate: (data: Record<string, unknown>) => boolean | void | Promise<boolean | void>): Promise<void> {
+        const run = this.pendingWrite.then(async () => {
+            const data = (await this.read()) as Record<string, unknown>;
+            if ((await mutate(data)) !== false) {
+                await this.write(data as PluginCacheData);
+            }
+        });
+        this.pendingWrite = run.catch(() => undefined);
+        return run;
+    }
 
     async read(): Promise<PluginCacheData> {
         const data = await this.host.loadData();
@@ -37,13 +57,21 @@ export class PluginDataStore {
     }
 
     async getVaultAnalysis(): Promise<VaultAnalysisData | null> {
-        return (await this.read()).vaultAnalysis ?? null;
+        const analysis = (await this.read()).vaultAnalysis ?? null;
+        if (!analysis?.results) {
+            return analysis;
+        }
+        // Repair caches written by older builds that appended duplicate rows per path (last wins)
+        const byPath = new Map(analysis.results.map(r => [r.path, r]));
+        if (byPath.size === analysis.results.length) {
+            return analysis;
+        }
+        const results = [...byPath.values()];
+        return { ...analysis, results, totalFiles: results.length };
     }
 
     async setVaultAnalysis(data: VaultAnalysisData): Promise<void> {
-        const cache = await this.read();
-        cache.vaultAnalysis = data;
-        await this.write(cache);
+        await this.update(cache => { cache.vaultAnalysis = data; });
     }
 
     async getFailedBatches(): Promise<FailedBatchesData | null> {
@@ -51,9 +79,7 @@ export class PluginDataStore {
     }
 
     async setFailedBatches(data: FailedBatchesData): Promise<void> {
-        const cache = await this.read();
-        cache.failedBatches = data;
-        await this.write(cache);
+        await this.update(cache => { cache.failedBatches = data; });
     }
 
     async getTabAnalysis<T extends TabAnalysisData>(tabName: string): Promise<T | null> {
@@ -62,12 +88,32 @@ export class PluginDataStore {
     }
 
     async setTabAnalysis(tabName: string, data: TabAnalysisData): Promise<void> {
-        const cache = await this.read();
-        if (!cache.tabAnalyses) {
-            cache.tabAnalyses = {};
-        }
-        cache.tabAnalyses[tabName] = data;
-        await this.write(cache);
+        await this.update(cache => {
+            const tabs = (cache.tabAnalyses ?? {}) as Record<string, TabAnalysisData>;
+            tabs[tabName] = data;
+            cache.tabAnalyses = tabs;
+        });
+    }
+
+    async getTabAnalysisError(tabName: string): Promise<TabAnalysisError | null> {
+        return (await this.read()).tabAnalysisErrors?.[tabName] ?? null;
+    }
+
+    async setTabAnalysisError(tabName: string, error: TabAnalysisError): Promise<void> {
+        await this.update(cache => {
+            const errors = (cache.tabAnalysisErrors ?? {}) as Record<string, TabAnalysisError>;
+            errors[tabName] = error;
+            cache.tabAnalysisErrors = errors;
+        });
+    }
+
+    async clearTabAnalysisError(tabName: string): Promise<void> {
+        await this.update(cache => {
+            const errors = cache.tabAnalysisErrors as Record<string, TabAnalysisError> | undefined;
+            if (!errors?.[tabName]) return false;
+            delete errors[tabName];
+            return true;
+        });
     }
 
     async getDerivedVisualizations(): Promise<DerivedVisualizationsData | null> {
@@ -75,9 +121,7 @@ export class PluginDataStore {
     }
 
     async setDerivedVisualizations(data: DerivedVisualizationsData): Promise<void> {
-        const cache = await this.read();
-        cache.derivedVisualizations = data;
-        await this.write(cache);
+        await this.update(cache => { cache.derivedVisualizations = data; });
     }
 
     /**
@@ -85,7 +129,10 @@ export class PluginDataStore {
      * using Vault API (getAbstractFileByPath + read), not Node fs or vault.adapter.
      */
     async migrateLegacyCacheFromVaultFiles(app: App): Promise<void> {
-        const cache = await this.read();
+        await this.update(data => this.migrateLegacyCache(app, data as PluginCacheData));
+    }
+
+    private async migrateLegacyCache(app: App, cache: PluginCacheData): Promise<boolean> {
 
         const base = `${app.vault.configDir}/plugins/${PLUGIN_ID}/responses`;
         let changed = false;
@@ -127,9 +174,7 @@ export class PluginDataStore {
             }
         }
 
-        if (changed) {
-            await this.write(cache);
-        }
+        return changed;
     }
 
     private async readLegacyJsonFile(app: App, vaultPath: string): Promise<unknown> {

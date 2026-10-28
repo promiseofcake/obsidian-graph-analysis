@@ -34,7 +34,6 @@ export class VaultSemanticAnalysisManager {
     private domainTemplateLoaded: boolean = false;
     private readonly MAX_CHARS_PER_NOTE = 8000;
     private readonly MAX_NOTES_PER_BATCH = 30;
-    private readonly DELAY_BETWEEN_BATCHES = 6000; // 6s between batches (Gemini 2.5 Flash Lite RPM 10)
 
     private _analysisInProgress: 'semantic' | 'structure' | 'evolution' | 'actions' | null = null;
     private activeVaultAnalysisModal: VaultAnalysisModal | null = null;
@@ -442,12 +441,12 @@ export class VaultSemanticAnalysisManager {
         newResults: VaultAnalysisResult[],
         deletedFilePaths: string[]
     ): VaultAnalysisResult[] {
-        // Start with unchanged results
-        const mergedResults = [...unchangedResults];
-        
-        // Add new/updated results
-        mergedResults.push(...newResults);
-        
+        // Key by path so a new/updated result replaces an existing one instead of duplicating it
+        const byPath = new Map<string, VaultAnalysisResult>();
+        for (const result of unchangedResults) byPath.set(result.path, result);
+        for (const result of newResults) byPath.set(result.path, result);
+        const mergedResults = [...byPath.values()];
+
         // Remove deleted files from the merged results
         const deletedPathsSet = new Set(deletedFilePaths);
         const beforeFilterCount = mergedResults.length;
@@ -522,8 +521,8 @@ export class VaultSemanticAnalysisManager {
     public async generateVaultAnalysis(): Promise<boolean> {
         this.setAnalysisInProgress('semantic');
         try {
-            // Check if Gemini API key is configured
-            if (!this.settings.geminiApiKey || this.settings.geminiApiKey.trim() === '') {
+            // Check the selected AI provider is configured
+            if (!this.aiService.isConfigured()) {
                 new Notice(t('notices.configureApiKey'));
                 return false;
             }
@@ -572,8 +571,14 @@ export class VaultSemanticAnalysisManager {
             // Append failed-batch files at the end (for resume)
             const failedPaths = await this.getFailedBatchFilePaths();
             const inFilesToProcess = new Set(filesToProcess.map(f => f.path));
+            // Notes with a current result already succeeded since they failed; don't re-analyze them
+            const alreadyAnalyzed = new Set(unchangedResults.map(r => r.path));
+            if (failedPaths.length > 0 && failedPaths.every(path => alreadyAnalyzed.has(path))) {
+                // Every previously failed note has a current result: the record is stale
+                await this.clearFailedBatches();
+            }
             for (const path of failedPaths) {
-                if (inFilesToProcess.has(path)) continue;
+                if (inFilesToProcess.has(path) || alreadyAnalyzed.has(path)) continue;
                 const file = this.app.vault.getAbstractFileByPath(path);
                 const includedPaths = new Set(this.getIncludedMarkdownFiles().map((f) => f.path));
                 if (file instanceof TFile && includedPaths.has(path)) {
@@ -588,9 +593,11 @@ export class VaultSemanticAnalysisManager {
             }
 
             // Show initial notice with incremental update info and estimated time
-            // ~4 batches per minute based on rate limits and processing
+            // Batches run in waves of `concurrency`, each wave taking about secondsPerBatch
+            const batchSchedule = this.aiService.getBatchSchedule();
             const batchCount = Math.ceil(filesToProcess.length / this.MAX_NOTES_PER_BATCH);
-            const estimatedMins = Math.max(1, Math.ceil(batchCount / 4));
+            const waves = Math.ceil(batchCount / batchSchedule.concurrency);
+            const estimatedMins = Math.max(1, Math.ceil(waves * batchSchedule.secondsPerBatch / 60));
             const initialMessage = isIncrementalUpdate
                 ? t('notices.vaultAnalysisUpdating', {
                     changed: changedCount,
@@ -657,9 +664,9 @@ export class VaultSemanticAnalysisManager {
                 }
             }
 
-            // Create note-based batches (30 notes per batch for Gemini 2.5 Flash Lite: RPM 10)
-            const delayBetweenBatches = this.DELAY_BETWEEN_BATCHES;
-            
+            // Create note-based batches; how many run at once and the gap between them depends on the provider
+            const { concurrency, delayMs: delayBetweenBatches } = batchSchedule;
+
             const batches: Array<typeof fileDataList> = [];
             let currentBatch: typeof fileDataList = [];
 
@@ -691,11 +698,10 @@ export class VaultSemanticAnalysisManager {
             let totalTokenUsage = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
             let stoppedDueToQuota = false;
             let firstBatchTimestamp: string | null = null;
-            let lastBatchIndex = -1;
+            let nextBatchIndex = 0;
 
-            // Process batches sequentially with proper rate limiting
-            for (let batchIndex = 0; batchIndex < totalBatches && !stoppedDueToQuota; batchIndex++) {
-                lastBatchIndex = batchIndex;
+            // Workers take the next unstarted batch; with concurrency 1 this is the original serial loop
+            const processBatch = async (batchIndex: number): Promise<void> => {
                 const batch = batches[batchIndex];
                 const batchFileCount = batch.length;
                 const batchCharCount = batch.reduce((sum, f) => sum + f.charCount, 0);
@@ -721,7 +727,7 @@ export class VaultSemanticAnalysisManager {
                         processed += batch.length;
                         progressNotice.hide();
                         stoppedDueToQuota = true;
-                        break;
+                        return;
                     }
 
                     if (err.errorType === 'rate_limit') {
@@ -786,22 +792,27 @@ export class VaultSemanticAnalysisManager {
                         };
                     await this.saveBatchResults(mergedSoFar, isIncrementalUpdate, totalTokenUsage, batchMetadata);
                 }
+            };
 
-                // Wait between batches (rate limiting handled internally)
-                if (batchIndex < totalBatches - 1) {
-                    const preparingNextBatchText = isIncrementalUpdate
-                        ? `Preparing batch ${batchIndex + 2}/${totalBatches}... (${processed}/${filesToProcess.length} completed, ${failed} failed, ${unchangedCount} unchanged)`
-                        : `Preparing batch ${batchIndex + 2}/${totalBatches}... (${processed}/${filesToProcess.length} completed, ${failed} failed)`;
-                    progressNotice.setMessage(preparingNextBatchText);
-                    await new Promise(resolve => this.win.setTimeout(resolve, delayBetweenBatches));
-                } else if (totalBatches === 1) {
-                    // Single batch - no rate limiting needed
-                    // console.log('Single batch processing completed - no rate limiting required');
+            const worker = async (): Promise<void> => {
+                while (!stoppedDueToQuota && nextBatchIndex < totalBatches) {
+                    const batchIndex = nextBatchIndex++;
+                    await processBatch(batchIndex);
+
+                    // Gap between batches for providers with tight per-minute limits
+                    if (delayBetweenBatches > 0 && !stoppedDueToQuota && nextBatchIndex < totalBatches) {
+                        const preparingNextBatchText = isIncrementalUpdate
+                            ? `Preparing batch ${nextBatchIndex + 1}/${totalBatches}... (${processed}/${filesToProcess.length} completed, ${failed} failed, ${unchangedCount} unchanged)`
+                            : `Preparing batch ${nextBatchIndex + 1}/${totalBatches}... (${processed}/${filesToProcess.length} completed, ${failed} failed)`;
+                        progressNotice.setMessage(preparingNextBatchText);
+                        await new Promise(resolve => this.win.setTimeout(resolve, delayBetweenBatches));
+                    }
                 }
-            }
+            };
+            await Promise.all(Array.from({ length: Math.min(concurrency, totalBatches) }, () => worker()));
 
-            if (stoppedDueToQuota && lastBatchIndex + 1 < totalBatches) {
-                const remainingBatches = batches.slice(lastBatchIndex + 1);
+            if (stoppedDueToQuota && nextBatchIndex < totalBatches) {
+                const remainingBatches = batches.slice(nextBatchIndex);
                 await this.saveRemainingNotes(remainingBatches);
             }
 
@@ -1025,7 +1036,10 @@ export class VaultSemanticAnalysisManager {
         return file.path.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     }
 
-    private readonly FAILED_BATCHES_EMPTY: FailedBatchesData = { remaining: null, failed: [] };
+    // Fresh object each call: callers push into `failed`, so a shared constant would accumulate entries
+    private emptyFailedBatches(): FailedBatchesData {
+        return { remaining: null, failed: [] };
+    }
 
     private async getFailedBatchFilePaths(): Promise<string[]> {
         try {
@@ -1048,13 +1062,13 @@ export class VaultSemanticAnalysisManager {
     }
 
     private async clearFailedBatches(): Promise<void> {
-        await this.dataStore.setFailedBatches(this.FAILED_BATCHES_EMPTY);
+        await this.dataStore.setFailedBatches(this.emptyFailedBatches());
     }
 
     private async readFailedBatchesData(): Promise<FailedBatchesData> {
         const raw = await this.dataStore.getFailedBatches();
         if (!raw) {
-            return this.FAILED_BATCHES_EMPTY;
+            return this.emptyFailedBatches();
         }
         if (raw.remaining != null || Array.isArray(raw.failed)) {
             return { remaining: raw.remaining ?? null, failed: raw.failed ?? [] };
@@ -1148,7 +1162,7 @@ export class VaultSemanticAnalysisManager {
             totalFiles: 0,
             generatedFiles: 0,
             updatedFiles: 0,
-            apiProvider: 'Google Gemini',
+            apiProvider: this.aiService.getProviderLabel(),
             results: []
         };
         await this.dataStore.setVaultAnalysis(initialData);
@@ -1172,7 +1186,7 @@ export class VaultSemanticAnalysisManager {
                     totalFiles: 0,
                     generatedFiles: 0,
                     updatedFiles: 0,
-                    apiProvider: 'Google Gemini',
+                    apiProvider: this.aiService.getProviderLabel(),
                     results: []
                 };
                 await this.dataStore.setVaultAnalysis(initialData);
@@ -1295,7 +1309,7 @@ export class VaultSemanticAnalysisManager {
             totalFiles: metadata.totalFiles,
             generatedFiles: metadata.generatedFiles,
             updatedFiles: metadata.updatedFiles,
-            apiProvider: 'Google Gemini',
+            apiProvider: this.aiService.getProviderLabel(),
             ...(metadata.tokenUsage && { tokenUsage: metadata.tokenUsage }),
             results: enhancedResults
         };
