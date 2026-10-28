@@ -4,7 +4,7 @@
 	"version": "0.6.7",
 	"minAppVersion": "1.7.2",
 	"description": "Analyze your vault with graph algorithms and optional AI insights.",
-	"author": "wluo",
-	"authorUrl": "https://github.com/luolanaaTUD",
+	"author": "Lucas Kacher",
+	"authorUrl": "https://github.com/promiseofcake",
 	"isDesktopOnly": true
 }

@@ -32,16 +32,19 @@
     "analysis",
     "centrality"
   ],
-  "author": "wluo",
+  "author": "Lucas Kacher",
+  "contributors": [
+    "wluo (original author, https://github.com/luolanaaTUD/obsidian-graph-analysis)"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luolanaaTUD/obsidian-graph-analysis"
+    "url": "https://github.com/promiseofcake/obsidian-graph-analysis"
   },
   "bugs": {
-    "url": "https://github.com/luolanaaTUD/obsidian-graph-analysis/issues"
+    "url": "https://github.com/promiseofcake/obsidian-graph-analysis/issues"
   },
-  "homepage": "https://github.com/luolanaaTUD/obsidian-graph-analysis#readme",
+  "homepage": "https://github.com/promiseofcake/obsidian-graph-analysis#readme",
   "tagVersionPrefix": "",
   "devDependencies": {
     "@types/chroma-js": "^3.1.1",
