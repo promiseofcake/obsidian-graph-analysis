@@ -2,9 +2,7 @@ import { requestUrl } from 'obsidian';
 import { SignatureV4 } from '@smithy/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { getAwsCliCredentials } from './AwsCliCredentials';
-
-/** Tool name used to force structured (schema-shaped) output from Converse. */
-const STRUCTURED_OUTPUT_TOOL = 'structured_output';
+import { wrapResultSchema } from './BedrockSchema';
 
 export interface BedrockConverseParams {
     awsCliPath: string;
@@ -16,11 +14,10 @@ export interface BedrockConverseParams {
     /** Gemini-style response schema (uppercase types); converted to JSON Schema here */
     responseSchema: unknown;
     maxTokens: number;
-    temperature: number;
 }
 
 export interface BedrockConverseResult {
-    /** Parsed tool input, i.e. the structured result */
+    /** Parsed structured result */
     data: unknown;
     usage: { inputTokens: number; outputTokens: number; totalTokens: number };
 }
@@ -28,40 +25,11 @@ export interface BedrockConverseResult {
 interface ConverseResponse {
     output?: {
         message?: {
-            content?: Array<{ text?: string; toolUse?: { name?: string; input?: unknown } }>;
+            content?: Array<{ text?: string }>;
         };
     };
     stopReason?: string;
     usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-}
-
-/**
- * Convert a Gemini structured-output schema to JSON Schema:
- * lowercase type names and drop Gemini-only keywords.
- */
-export function geminiSchemaToJsonSchema(schema: unknown): unknown {
-    if (Array.isArray(schema)) {
-        return schema.map(geminiSchemaToJsonSchema);
-    }
-    if (!schema || typeof schema !== 'object') {
-        return schema;
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
-        if (key === 'propertyOrdering' || key === 'nullable') continue;
-        if (key === 'type' && typeof value === 'string') {
-            out.type = value.toLowerCase();
-        } else if (key === 'properties' && value && typeof value === 'object') {
-            const props: Record<string, unknown> = {};
-            for (const [name, prop] of Object.entries(value as Record<string, unknown>)) {
-                props[name] = geminiSchemaToJsonSchema(prop);
-            }
-            out.properties = props;
-        } else {
-            out[key] = geminiSchemaToJsonSchema(value);
-        }
-    }
-    return out;
 }
 
 function parseErrorBody(status: number, body: string, json: unknown): string {
@@ -72,34 +40,25 @@ function parseErrorBody(status: number, body: string, json: unknown): string {
 
 /**
  * Bedrock Converse via Obsidian requestUrl, SigV4-signed with AWS CLI profile credentials.
- * Structured output is obtained by forcing a single tool call whose input schema is the response schema.
+ * Structured output uses Converse native JSON schema output (outputConfig.textFormat).
  */
 export async function bedrockConverseStructured(params: BedrockConverseParams): Promise<BedrockConverseResult> {
     const credentials = await getAwsCliCredentials(params.awsCliPath, params.awsProfile);
 
-    // Tool input must be an object; wrap so array-rooted schemas work too
-    const inputSchema = {
-        type: 'object',
-        properties: { result: geminiSchemaToJsonSchema(params.responseSchema) },
-        required: ['result']
-    };
-
     const body = JSON.stringify({
         messages: [{ role: 'user', content: [{ text: params.prompt }] }],
-        inferenceConfig: {
-            maxTokens: params.maxTokens,
-            // Newer Claude models reject temperature and topP together; send temperature only
-            temperature: params.temperature
-        },
-        toolConfig: {
-            tools: [{
-                toolSpec: {
-                    name: STRUCTURED_OUTPUT_TOOL,
-                    description: 'Return the analysis result in the required structure.',
-                    inputSchema: { json: inputSchema }
+        // No temperature/topP: newer Claude models reject them
+        inferenceConfig: { maxTokens: params.maxTokens },
+        outputConfig: {
+            textFormat: {
+                type: 'json_schema',
+                structure: {
+                    jsonSchema: {
+                        name: 'result',
+                        schema: JSON.stringify(wrapResultSchema(params.responseSchema))
+                    }
                 }
-            }],
-            toolChoice: { tool: { name: STRUCTURED_OUTPUT_TOOL } }
+            }
         }
     });
 
@@ -151,14 +110,26 @@ export async function bedrockConverseStructured(params: BedrockConverseParams): 
         throw new Error('Bedrock response truncated (max_tokens reached) - try fewer notes per batch');
     }
 
-    const toolUse = response.output?.message?.content?.find(c => c.toolUse?.name === STRUCTURED_OUTPUT_TOOL)?.toolUse;
-    const input = toolUse?.input as { result?: unknown } | undefined;
-    if (!input || input.result === undefined) {
+    const text = (response.output?.message?.content ?? [])
+        .map(c => c.text ?? '')
+        .join('')
+        .trim();
+    if (!text) {
         throw new Error(`Empty structured response from Bedrock (stopReason: ${response.stopReason ?? 'unknown'})`);
     }
 
+    let parsed: { result?: unknown };
+    try {
+        parsed = JSON.parse(text) as { result?: unknown };
+    } catch (parseError) {
+        throw new Error(`Failed to parse Bedrock structured response: ${(parseError as Error).message}`);
+    }
+    if (parsed.result === undefined) {
+        throw new Error('Bedrock structured response missing "result"');
+    }
+
     return {
-        data: input.result,
+        data: parsed.result,
         usage: {
             inputTokens: response.usage?.inputTokens ?? 0,
             outputTokens: response.usage?.outputTokens ?? 0,

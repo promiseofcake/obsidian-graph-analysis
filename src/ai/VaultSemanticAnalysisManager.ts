@@ -1148,7 +1148,7 @@ export class VaultSemanticAnalysisManager {
             totalFiles: 0,
             generatedFiles: 0,
             updatedFiles: 0,
-            apiProvider: 'Google Gemini',
+            apiProvider: this.aiService.getProviderLabel(),
             results: []
         };
         await this.dataStore.setVaultAnalysis(initialData);
@@ -1172,7 +1172,7 @@ export class VaultSemanticAnalysisManager {
                     totalFiles: 0,
                     generatedFiles: 0,
                     updatedFiles: 0,
-                    apiProvider: 'Google Gemini',
+                    apiProvider: this.aiService.getProviderLabel(),
                     results: []
                 };
                 await this.dataStore.setVaultAnalysis(initialData);
@@ -1295,7 +1295,7 @@ export class VaultSemanticAnalysisManager {
             totalFiles: metadata.totalFiles,
             generatedFiles: metadata.generatedFiles,
             updatedFiles: metadata.updatedFiles,
-            apiProvider: 'Google Gemini',
+            apiProvider: this.aiService.getProviderLabel(),
             ...(metadata.tokenUsage && { tokenUsage: metadata.tokenUsage }),
             results: enhancedResults
         };

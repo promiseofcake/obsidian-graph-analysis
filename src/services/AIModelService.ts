@@ -42,6 +42,11 @@ export class AIModelService {
         return this.settings?.aiProvider === 'bedrock';
     }
 
+    /** Human-readable provider name recorded with analysis results. */
+    public getProviderLabel(): string {
+        return this.isBedrock ? 'AWS Bedrock' : 'Google Gemini';
+    }
+
     public getModelName(): string {
         return this.isBedrock ? this.settings.bedrockModelId : this.MODEL_NAME;
     }
@@ -104,8 +109,7 @@ export class AIModelService {
                 modelId: this.settings.bedrockModelId.trim(),
                 prompt,
                 responseSchema,
-                maxTokens: maxOutputTokens,
-                temperature
+                maxTokens: maxOutputTokens
             });
             return {
                 data: response.data,

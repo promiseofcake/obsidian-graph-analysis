@@ -320,7 +320,7 @@ ${formattedContext}`;
             const tabData: StructureAnalysisData = {
                 generatedAt: new Date().toISOString(),
                 sourceAnalysisId: this.generateAnalysisId(analysisData),
-                apiProvider: 'Google Gemini',
+                apiProvider: this.aiService.getProviderLabel(),
                 knowledgeStructure: structureData
             };
             
@@ -440,7 +440,7 @@ ${formattedContext}`;
             const tabData: EvolutionAnalysisData = {
                 generatedAt: new Date().toISOString(),
                 sourceAnalysisId: this.generateAnalysisId(analysisData),
-                apiProvider: 'Google Gemini',
+                apiProvider: this.aiService.getProviderLabel(),
                 knowledgeEvolution: evolutionData
             };
 
@@ -579,7 +579,7 @@ ${formattedContext}`;
             const tabData: ActionsAnalysisData = {
                 generatedAt: new Date().toISOString(),
                 sourceAnalysisId: this.generateAnalysisId(analysisData),
-                apiProvider: 'Google Gemini',
+                apiProvider: this.aiService.getProviderLabel(),
                 recommendedActions: actionsData
             };
 
