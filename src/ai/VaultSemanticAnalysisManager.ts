@@ -574,6 +574,10 @@ export class VaultSemanticAnalysisManager {
             const inFilesToProcess = new Set(filesToProcess.map(f => f.path));
             // Notes with a current result already succeeded since they failed; don't re-analyze them
             const alreadyAnalyzed = new Set(unchangedResults.map(r => r.path));
+            if (failedPaths.length > 0 && failedPaths.every(path => alreadyAnalyzed.has(path))) {
+                // Every previously failed note has a current result: the record is stale
+                await this.clearFailedBatches();
+            }
             for (const path of failedPaths) {
                 if (inFilesToProcess.has(path) || alreadyAnalyzed.has(path)) continue;
                 const file = this.app.vault.getAbstractFileByPath(path);
