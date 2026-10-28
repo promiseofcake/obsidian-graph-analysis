@@ -20,6 +20,8 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const NO_EXPIRY_TTL_MS = 15 * 60 * 1000;
 
 const cache = new Map<string, { credentials: AwsCredentials; refreshAt: number }>();
+// Concurrent callers share one CLI invocation instead of each spawning their own
+const inFlight = new Map<string, Promise<AwsCredentials>>();
 
 function runCli(cliPath: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -46,6 +48,15 @@ export async function getAwsCliCredentials(cliPath: string, profile: string): Pr
         return cached.credentials;
     }
 
+    let pending = inFlight.get(key);
+    if (!pending) {
+        pending = fetchCredentials(cliPath, profile, key).finally(() => inFlight.delete(key));
+        inFlight.set(key, pending);
+    }
+    return pending;
+}
+
+async function fetchCredentials(cliPath: string, profile: string, key: string): Promise<AwsCredentials> {
     let stdout: string;
     try {
         stdout = await runCli(cliPath, ['configure', 'export-credentials', '--profile', profile, '--format', 'process']);
@@ -83,4 +94,5 @@ export async function getAwsCliCredentials(cliPath: string, profile: string): Pr
 
 export function clearAwsCliCredentialCache(): void {
     cache.clear();
+    inFlight.clear();
 }

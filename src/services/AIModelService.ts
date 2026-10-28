@@ -17,6 +17,15 @@ export interface TokenUsage {
     totalTokens: number;
 }
 
+export interface BatchSchedule {
+    /** Batches in flight at once */
+    concurrency: number;
+    /** Pause after each batch before a worker starts the next */
+    delayMs: number;
+    /** Rough wall time per batch, for the progress estimate */
+    secondsPerBatch: number;
+}
+
 export interface AIResponse<T = string> {
     result: T;
     tokenUsage: TokenUsage;
@@ -39,8 +48,23 @@ export class AIModelService {
     private readonly SEMANTIC_MODEL_NAME = 'gemini-3.1-flash-lite-preview'; // Default when no modelOverride
     private readonly BEDROCK_MIN_MAX_TOKENS = 16384;
 
+    // Vault batch scheduling. Gemini free tier (RPM 10): one at a time with a 6s gap.
+    // Bedrock quotas are per account and far higher: overlap a few batches, no gap, back off on throttling.
+    private readonly GEMINI_BATCH_SCHEDULE: BatchSchedule = { concurrency: 1, delayMs: 6000, secondsPerBatch: 15 };
+    private readonly BEDROCK_BATCH_SCHEDULE: BatchSchedule = { concurrency: 3, delayMs: 0, secondsPerBatch: 45 };
+
+    // Bedrock retries: exponential backoff with full jitter on throttling / transient 5xx
+    private readonly BEDROCK_MAX_ATTEMPTS = 5;
+    private readonly BEDROCK_BACKOFF_BASE_MS = 2000;
+    private readonly BEDROCK_BACKOFF_MAX_MS = 30000;
+
     private get isBedrock(): boolean {
         return this.settings?.aiProvider === 'bedrock';
+    }
+
+    /** How vault analysis batches should be scheduled for the selected provider. */
+    public getBatchSchedule(): BatchSchedule {
+        return this.isBedrock ? this.BEDROCK_BATCH_SCHEDULE : this.GEMINI_BATCH_SCHEDULE;
     }
 
     /** Human-readable provider name recorded with analysis results. */
@@ -87,6 +111,31 @@ export class AIModelService {
         return key;
     }
 
+    /** Throttling and transient server errors are worth retrying; daily quota and client errors are not. */
+    private isRetryableBedrockError(message: string): boolean {
+        if (classifyGeminiError(message) === 'quota_exhausted') {
+            return false;
+        }
+        const status = Number(/^(\d{3}) /.exec(message)?.[1]);
+        return [429, 500, 502, 503, 504].includes(status)
+            || /ThrottlingException|ServiceUnavailable|ModelNotReady|too many requests/i.test(message);
+    }
+
+    private async withBedrockRetry<T>(call: () => Promise<T>): Promise<T> {
+        for (let attempt = 1; ; attempt++) {
+            try {
+                return await call();
+            } catch (error) {
+                const message = (error as Error).message;
+                if (attempt >= this.BEDROCK_MAX_ATTEMPTS || !this.isRetryableBedrockError(message)) {
+                    throw error;
+                }
+                const cap = Math.min(this.BEDROCK_BACKOFF_MAX_MS, this.BEDROCK_BACKOFF_BASE_MS * 2 ** (attempt - 1));
+                await new Promise(resolve => this.win.setTimeout(resolve, Math.random() * cap));
+            }
+        }
+    }
+
     /**
      * Single provider call. Gemini returns JSON text to parse; Bedrock returns the parsed structure.
      */
@@ -103,7 +152,7 @@ export class AIModelService {
             if (!this.isConfigured()) {
                 throw new Error('Bedrock not configured. Please set AWS profile, region, and model ID in settings.');
             }
-            const response = await bedrockConverseStructured({
+            const response = await this.withBedrockRetry(() => bedrockConverseStructured({
                 awsCliPath: this.settings.awsCliPath.trim(),
                 awsProfile: this.settings.bedrockAwsProfile.trim(),
                 region: this.settings.bedrockRegion.trim(),
@@ -112,7 +161,7 @@ export class AIModelService {
                 responseSchema,
                 // Every schema field is required on Bedrock, so outputs run longer; keep headroom
                 maxTokens: Math.max(maxOutputTokens, this.BEDROCK_MIN_MAX_TOKENS)
-            });
+            }));
             return {
                 data: response.data,
                 tokenUsage: {
@@ -195,7 +244,8 @@ export class AIModelService {
             if (errorType === 'quota_exhausted') {
                 throw new SemanticAnalysisError(errorMessage, 'quota_exhausted', model);
             }
-            if (errorType === 'rate_limit') {
+            // Bedrock already retried with bounded backoff; only Gemini keeps the fixed-delay retry
+            if (errorType === 'rate_limit' && !this.isBedrock) {
                 await new Promise(resolve => this.win.setTimeout(resolve, this.ADVANCED_RATE_LIMIT_DELAY));
                 return this.generateStructuredAnalysis(
                     prompt,
