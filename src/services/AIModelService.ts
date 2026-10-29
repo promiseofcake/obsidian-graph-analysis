@@ -1,6 +1,7 @@
 import { GraphAnalysisSettings } from '../types/types';
 import { geminiGenerateContent } from './GeminiRestClient';
 import { bedrockConverseStructured } from './BedrockRestClient';
+import { BEDROCK_TUNING, type BedrockTuningKey, resolveTuningValue } from './BedrockTuning';
 import { createKnowledgeNetworkSchema } from '../ai/schemas/knowledge-network.schema';
 import { createVaultSemanticAnalysisSchema } from '../ai/schemas/vault-semantic-analysis.schema';
 import { createKnowledgeEvolutionSchema } from '../ai/schemas/knowledge-evolution.schema';
@@ -18,6 +19,8 @@ export interface TokenUsage {
 }
 
 export interface BatchSchedule {
+    /** Notes per batch */
+    batchSize: number;
     /** Batches in flight at once */
     concurrency: number;
     /** Pause after each batch before a worker starts the next */
@@ -48,23 +51,34 @@ export class AIModelService {
     private readonly SEMANTIC_MODEL_NAME = 'gemini-3.1-flash-lite-preview'; // Default when no modelOverride
     private readonly BEDROCK_MIN_MAX_TOKENS = 16384;
 
-    // Vault batch scheduling. Gemini free tier (RPM 10): one at a time with a 6s gap.
-    // Bedrock quotas are per account and far higher: overlap a few batches, no gap, back off on throttling.
-    private readonly GEMINI_BATCH_SCHEDULE: BatchSchedule = { concurrency: 1, delayMs: 6000, secondsPerBatch: 15 };
-    private readonly BEDROCK_BATCH_SCHEDULE: BatchSchedule = { concurrency: 3, delayMs: 0, secondsPerBatch: 45 };
-
-    // Bedrock retries: exponential backoff with full jitter on throttling / transient 5xx
-    private readonly BEDROCK_MAX_ATTEMPTS = 5;
-    private readonly BEDROCK_BACKOFF_BASE_MS = 2000;
-    private readonly BEDROCK_BACKOFF_MAX_MS = 30000;
+    // Vault batch scheduling. Gemini free tier (RPM 10): fixed, one at a time with a 6s gap.
+    // Bedrock quotas are per account and far higher; its batching and retries come from settings (BedrockTuning).
+    private readonly GEMINI_BATCH_SCHEDULE: BatchSchedule = { batchSize: 30, concurrency: 1, delayMs: 6000, secondsPerBatch: 15 };
+    // Observed on Claude Sonnet 5.5: ~30-45s for a 30-note batch
+    private readonly BEDROCK_SECONDS_PER_NOTE = 1.5;
 
     private get isBedrock(): boolean {
         return this.settings?.aiProvider === 'bedrock';
     }
 
+    /** A Bedrock batching/retry setting, defaulted and clamped to its allowed range. */
+    private tuning(key: BedrockTuningKey): number {
+        const spec = BEDROCK_TUNING.find(s => s.key === key)!;
+        return resolveTuningValue(spec, this.settings?.[key]);
+    }
+
     /** How vault analysis batches should be scheduled for the selected provider. */
     public getBatchSchedule(): BatchSchedule {
-        return this.isBedrock ? this.BEDROCK_BATCH_SCHEDULE : this.GEMINI_BATCH_SCHEDULE;
+        if (!this.isBedrock) {
+            return this.GEMINI_BATCH_SCHEDULE;
+        }
+        const batchSize = this.tuning('bedrockBatchSize');
+        return {
+            batchSize,
+            concurrency: this.tuning('bedrockBatchConcurrency'),
+            delayMs: this.tuning('bedrockBatchDelaySeconds') * 1000,
+            secondsPerBatch: batchSize * this.BEDROCK_SECONDS_PER_NOTE
+        };
     }
 
     /** Human-readable provider name recorded with analysis results. */
@@ -127,10 +141,13 @@ export class AIModelService {
                 return await call();
             } catch (error) {
                 const message = (error as Error).message;
-                if (attempt >= this.BEDROCK_MAX_ATTEMPTS || !this.isRetryableBedrockError(message)) {
+                if (attempt >= this.tuning('bedrockMaxAttempts') || !this.isRetryableBedrockError(message)) {
                     throw error;
                 }
-                const cap = Math.min(this.BEDROCK_BACKOFF_MAX_MS, this.BEDROCK_BACKOFF_BASE_MS * 2 ** (attempt - 1));
+                // Exponential backoff with full jitter: random wait up to min(max, base * 2^(attempt-1))
+                const baseMs = this.tuning('bedrockBackoffBaseSeconds') * 1000;
+                const maxMs = this.tuning('bedrockBackoffMaxSeconds') * 1000;
+                const cap = Math.min(maxMs, baseMs * 2 ** (attempt - 1));
                 await new Promise(resolve => this.win.setTimeout(resolve, Math.random() * cap));
             }
         }

@@ -39,7 +39,36 @@
         "desc": "aws 可执行文件的绝对路径（Obsidian 不会继承 shell 的 PATH）。",
         "placeholder": "/usr/local/bin/aws"
       },
-      "networkDisclosure": "当您运行库分析或生成标签页洞察时，插件会使用 AWS CLI 配置文件的临时凭证签名，将笔记内容与分析提示发送至 AWS Bedrock（bedrock-runtime.<region>.amazonaws.com）。插件加载时不会发送任何数据。"
+      "networkDisclosure": "当您运行库分析或生成标签页洞察时，插件会使用 AWS CLI 配置文件的临时凭证签名，将笔记内容与分析提示发送至 AWS Bedrock（bedrock-runtime.<region>.amazonaws.com）。插件加载时不会发送任何数据。",
+      "tuning": {
+        "heading": "批处理与重试",
+        "desc": "控制库分析批次如何发送至 Bedrock，以及被限流的请求如何重试。默认值适用于大多数账户；如遇限流或希望更快完成，可进行调整。",
+        "reset": "恢复默认值",
+        "batchSize": {
+          "name": "每批笔记数",
+          "desc": "每个请求发送的笔记数量。批次越小完成越快、失败影响越小，但每批会重复少量提示内容。{{min}}–{{max}}，默认 {{default}}。"
+        },
+        "concurrency": {
+          "name": "并行批次数",
+          "desc": "同时发送的批次数。提高可加快速度；如遇限流请降低。{{min}}–{{max}}，默认 {{default}}。"
+        },
+        "batchDelay": {
+          "name": "批次间隔（秒）",
+          "desc": "每批完成后开始下一批前的等待时间。{{min}}–{{max}}，默认 {{default}}。"
+        },
+        "maxAttempts": {
+          "name": "每个请求的最大尝试次数",
+          "desc": "被限流或暂时失败的请求的总尝试次数（含首次）。设为 1 即不重试。{{min}}–{{max}}，默认 {{default}}。"
+        },
+        "backoffBase": {
+          "name": "首次重试延迟（秒）",
+          "desc": "首次重试前等待时间的上限；每次重试翻倍，并在该上限内随机等待。{{min}}–{{max}}，默认 {{default}}。"
+        },
+        "backoffMax": {
+          "name": "最大重试延迟（秒）",
+          "desc": "重试之间等待时间的上限。{{min}}–{{max}}，默认 {{default}}。"
+        }
+      }
     },
     "geminiApiKey": {
       "name": "Gemini API 密钥",

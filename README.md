@@ -124,6 +124,7 @@ Under Obsidian settings → **Knowledge Graph Analysis**:
 | **AWS region** | Bedrock only. Region of the Bedrock runtime endpoint (default `us-east-1`). |
 | **Model or inference profile ID** | Bedrock only. A model ID, inference profile ID, or inference profile ARN (e.g. `us.anthropic.claude-sonnet-5-5`). |
 | **AWS CLI path** | Bedrock only. Absolute path to the `aws` binary (default `/usr/local/bin/aws`). |
+| **Batching and retries** | Bedrock only. Notes per batch, parallel batches, pause between batches, and retry behaviour; see [Tuning batching and retries](#tuning-batching-and-retries). |
 | **UI language / AI response language** | Language for plugin labels and for AI-generated text. |
 | **Visualization** | Graph appearance options in the graph view settings panel. |
 
@@ -159,8 +160,23 @@ Bedrock support lets the AI features run on models in your own AWS account inste
 
 - **Credentials:** before calling Bedrock, the plugin runs `aws configure export-credentials --profile <profile> --format process`, caches the temporary credentials in memory, and refreshes them 5 minutes before they expire. Nothing is written to disk.
 - **Inference:** each request is a SigV4-signed `POST` to `https://bedrock-runtime.<region>.amazonaws.com/model/<model-id>/converse`, sent through Obsidian's `requestUrl`. Structured output uses Converse's native JSON schema output. Because of Bedrock's schema limits, every field is required, and the number of results per batch isn't enforced by the schema.
-- **Scheduling:** vault analysis runs 3 batches of 30 notes at a time, with no pause between batches (Gemini runs one at a time with a 6s pause). Throttling and transient server errors are retried with exponential backoff, up to 5 attempts. Daily-quota and request errors are not retried.
+- **Scheduling:** by default, vault analysis runs 3 batches of 30 notes at a time, with no pause between batches (Gemini runs one at a time with a 6s pause). Throttling and transient server errors are retried with exponential backoff, up to 5 attempts by default. Daily-quota and request errors are not retried. All of this is adjustable; see below.
 - **Parameters:** `temperature` and `topP` are not sent, because newer Claude models reject them. Output is capped at 16,384 tokens or more per request.
+
+### Tuning batching and retries
+
+Under **Settings → Knowledge Graph Analysis → Batching and retries** (shown when the provider is AWS Bedrock). Gemini always uses its fixed free-tier schedule.
+
+| Setting | Default | Range | When to change it |
+|---|---|---|---|
+| **Notes per batch** | 30 | 1–50 | Lower (e.g. 10) for faster batches and smaller failures. Each batch repeats about 1.2K tokens of fixed prompt, so very small batches cost a bit more. |
+| **Parallel batches** | 3 | 1–10 | Raise for speed if your account's quotas allow; lower if you see throttling. |
+| **Pause between batches (seconds)** | 0 | 0–60 | Add a pause if you hit per-minute request quotas. |
+| **Max attempts per request** | 5 | 1–10 | Total tries for a throttled or temporarily failing request; 1 turns retries off. |
+| **First retry delay (seconds)** | 2 | 0.5–30 | Upper bound of the first wait; doubles each retry. |
+| **Max retry delay (seconds)** | 30 | 1–300 | Cap on any single wait. |
+
+Retries use full jitter: each wait is random, up to min(max retry delay, first retry delay × 2^(attempt − 1)). Out-of-range input is highlighted and not saved, and **Reset to defaults** restores the values above. A rough guide to wall time for a full pass: (notes ÷ notes per batch ÷ parallel batches) × about 1.5s per note in a batch.
 
 ### Troubleshooting
 
@@ -170,7 +186,8 @@ Bedrock support lets the AI features run on models in your own AWS account inste
 | `403` / `AccessDenied` | The role can't invoke that model or inference profile, or model access isn't enabled. The `converse` check in step 1 fails the same way. |
 | `400 The provided model identifier is invalid` | Wrong model ID for that region; use an inference profile ID such as `us.anthropic.claude-…`. |
 | `400 … not supported for this model` | The model doesn't support Converse structured output. |
-| "Bedrock response truncated at the output token limit" | A batch produced more output than the limit allows. |
+| "Bedrock response truncated at the output token limit" | A batch produced more output than the limit allows. Lower **Notes per batch**. |
+| Repeated `429 Too many requests` after retries | Throttled by account quotas. Lower **Parallel batches**, add a **Pause between batches**, or raise **Max attempts per request**. |
 
 Bedrock errors include the HTTP status, AWS request ID, stop reason and output size, never your note content. Failed batches are listed in the plugin's data and retried on the next run. Failed tab analyses show the error in the tab.
 
