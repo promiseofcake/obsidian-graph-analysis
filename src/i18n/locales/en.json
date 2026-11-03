@@ -31,8 +31,8 @@
       },
       "modelId": {
         "name": "Model or inference profile ID",
-        "desc": "Bedrock model ID, inference profile ID, or inference profile ARN.",
-        "placeholder": "us.anthropic.claude-sonnet-..."
+        "desc": "Bedrock model ID, inference profile ID, or inference profile ARN. Defaults to Claude Sonnet 5.5 (US cross-region).",
+        "placeholder": "us.anthropic.claude-sonnet-5-5"
       },
       "cliPath": {
         "name": "AWS CLI path",

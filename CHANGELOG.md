@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Bedrock model ID defaults to Claude Sonnet 5.5** (`us.anthropic.claude-sonnet-5-5`, the US cross-region inference profile, matching the default region `us-east-1`). Settings saved with an empty model ID pick up the default on load, so switching the provider to Bedrock no longer stops at "configure your AI provider" until a model is typed in.
+
 ## [0.7.1]
 
 ### Added

@@ -163,6 +163,10 @@ export default class GraphAnalysisPlugin extends Plugin {
         for (const key of Object.keys(DEFAULT_SETTINGS)) {
             if (key in data) settings[key] = data[key];
         }
+        // Earlier versions defaulted the model ID to '' and saved it; Bedrock can't run without one
+        if (typeof settings.bedrockModelId !== 'string' || !settings.bedrockModelId.trim()) {
+            settings.bedrockModelId = DEFAULT_SETTINGS.bedrockModelId;
+        }
         this.settings = settings as unknown as GraphAnalysisSettings;
         configureI18n(this.settings.uiLanguage);
     }

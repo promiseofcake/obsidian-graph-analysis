@@ -122,7 +122,7 @@ Under Obsidian settings → **Knowledge Graph Analysis**:
 | **Gemini API key** | Gemini only. Visit [Google AI Studio](https://aistudio.google.com/) to create a key. |
 | **AWS profile** | Bedrock only. A profile name from `~/.aws/config`. |
 | **AWS region** | Bedrock only. Region of the Bedrock runtime endpoint (default `us-east-1`). |
-| **Model or inference profile ID** | Bedrock only. A model ID, inference profile ID, or inference profile ARN (e.g. `us.anthropic.claude-sonnet-5-5`). |
+| **Model or inference profile ID** | Bedrock only. A model ID, inference profile ID, or inference profile ARN (default `us.anthropic.claude-sonnet-5-5`, Claude Sonnet 5.5 via the US cross-region inference profile). Leaving it blank restores the default. |
 | **AWS CLI path** | Bedrock only. Absolute path to the `aws` binary (default `/usr/local/bin/aws`). |
 | **UI language / AI response language** | Language for plugin labels and for AI-generated text. |
 | **Visualization** | Graph appearance options in the graph view settings panel. |

@@ -41,7 +41,8 @@ export const DEFAULT_SETTINGS: GraphAnalysisSettings = {
     geminiApiKey: '',
     bedrockAwsProfile: '',
     bedrockRegion: 'us-east-1',
-    bedrockModelId: '',
+    // US cross-region inference profile, matching the default region
+    bedrockModelId: 'us.anthropic.claude-sonnet-5-5',
     awsCliPath: '/usr/local/bin/aws',
     aiResponseLanguage: 'auto',
     uiLanguage: 'auto'

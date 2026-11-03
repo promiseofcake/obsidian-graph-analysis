@@ -31,8 +31,8 @@
       },
       "modelId": {
         "name": "模型或推理配置文件 ID",
-        "desc": "Bedrock 模型 ID、推理配置文件 ID 或推理配置文件 ARN。",
-        "placeholder": "us.anthropic.claude-sonnet-..."
+        "desc": "Bedrock 模型 ID、推理配置文件 ID 或推理配置文件 ARN。默认为 Claude Sonnet 5.5（美国跨区域）。",
+        "placeholder": "us.anthropic.claude-sonnet-5-5"
       },
       "cliPath": {
         "name": "AWS CLI 路径",
