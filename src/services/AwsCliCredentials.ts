@@ -7,6 +7,44 @@ export interface AwsCredentials {
     expiration?: Date;
 }
 
+/**
+ * Why AWS credentials could not be used. Each reason maps to one concrete fix for the user:
+ * - sso_expired: the SSO session needs `aws sso login`
+ * - rejected: AWS refused credentials the CLI handed out (expired or revoked mid-run)
+ * - profile_not_found: the configured profile is not in ~/.aws/config
+ * - cli_not_found: the configured AWS CLI path does not exist
+ */
+export type AwsAuthReason = 'sso_expired' | 'rejected' | 'profile_not_found' | 'cli_not_found' | 'other';
+
+/** Credential failure that no amount of retrying fixes; the user has to act before the next request. */
+export class AwsAuthError extends Error {
+    constructor(
+        message: string,
+        public readonly reason: AwsAuthReason,
+        public readonly profile: string,
+        public readonly cliPath: string
+    ) {
+        super(message);
+        this.name = 'AwsAuthError';
+    }
+
+    /** Shell command that fixes this failure, if there is one. */
+    get fixCommand(): string | undefined {
+        return this.reason === 'sso_expired' || this.reason === 'rejected'
+            ? `aws sso login --profile ${this.profile}`
+            : undefined;
+    }
+}
+
+/** Classify AWS CLI stderr from `configure export-credentials`. */
+export function classifyAwsCliFailure(message: string): AwsAuthReason {
+    // execFile on a missing binary: "spawn /path/to/aws ENOENT"
+    if (/\bENOENT\b/.test(message)) return 'cli_not_found';
+    if (/config profile .* could not be found/i.test(message)) return 'profile_not_found';
+    if (/sso|token|expired|refresh failed/i.test(message)) return 'sso_expired';
+    return 'other';
+}
+
 interface CredentialProcessOutput {
     AccessKeyId?: string;
     SecretAccessKey?: string;
@@ -62,20 +100,22 @@ async function fetchCredentials(cliPath: string, profile: string, key: string): 
         stdout = await runCli(cliPath, ['configure', 'export-credentials', '--profile', profile, '--format', 'process']);
     } catch (error) {
         const msg = (error as Error).message;
-        const hint = /sso|token|expired/i.test(msg)
-            ? ` Try running: aws sso login --profile ${profile}`
-            : '';
-        throw new Error(`AWS credentials for profile "${profile}" unavailable: ${msg}.${hint}`);
+        throw new AwsAuthError(
+            `AWS credentials for profile "${profile}" unavailable: ${msg}`,
+            classifyAwsCliFailure(msg),
+            profile,
+            cliPath
+        );
     }
 
     let parsed: CredentialProcessOutput;
     try {
         parsed = JSON.parse(stdout) as CredentialProcessOutput;
     } catch {
-        throw new Error(`AWS CLI returned unparseable credentials for profile "${profile}"`);
+        throw new AwsAuthError(`AWS CLI returned unparseable credentials for profile "${profile}"`, 'other', profile, cliPath);
     }
     if (!parsed.AccessKeyId || !parsed.SecretAccessKey) {
-        throw new Error(`AWS CLI returned incomplete credentials for profile "${profile}"`);
+        throw new AwsAuthError(`AWS CLI returned incomplete credentials for profile "${profile}"`, 'other', profile, cliPath);
     }
 
     const expiration = parsed.Expiration ? new Date(parsed.Expiration) : undefined;
@@ -90,6 +130,11 @@ async function fetchCredentials(cliPath: string, profile: string, key: string): 
         : Date.now() + NO_EXPIRY_TTL_MS;
     cache.set(key, { credentials, refreshAt });
     return credentials;
+}
+
+/** Drop cached credentials for one profile so the next call asks the CLI again. */
+export function invalidateAwsCliCredentials(cliPath: string, profile: string): void {
+    cache.delete(`${cliPath}\u0000${profile}`);
 }
 
 export function clearAwsCliCredentialCache(): void {

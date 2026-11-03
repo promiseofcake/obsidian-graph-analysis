@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1]
+
+### Added
+
+- **Actionable AWS credential errors**: an expired SSO session, rejected credentials, a missing profile or a missing AWS CLI each get their own message saying what to do. The notice stays open until dismissed, with **Copy command** (`aws sso login --profile <profile>`) and **Retry** buttons. Retry re-checks credentials in place and reports "still failing" with the check time, or starts the refresh once they work. Tab analyses show the same messages.
+
+### Changed
+
+- **Vault analysis checks Bedrock credentials before the first batch**, so an expired session is reported in about a second instead of after every batch fails.
+- **Credential failures mid-run stop the run** instead of failing every remaining batch. Finished notes are saved and the remaining notes are queued for the next run, retryable immediately (not after the 24h quota wait). When Bedrock rejects cached credentials, the plugin fetches fresh ones from the CLI and retries once before giving up.
+
 ## [0.7.0]
 
 First release of the promiseofcake fork.

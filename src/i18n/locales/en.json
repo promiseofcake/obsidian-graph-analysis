@@ -91,9 +91,22 @@
   },
   "errors": {
     "quotaExhausted": "Free-tier daily limit reached. Retry tomorrow.",
-    "rateLimit": "API rate limit exceeded. Please try again later."
+    "rateLimit": "API rate limit exceeded. Please try again later.",
+    "awsAuth": {
+      "ssoExpired": "Your AWS SSO session for profile \"{{profile}}\" has expired. Run `{{command}}` in a terminal, then try again.",
+      "rejected": "AWS rejected the credentials for profile \"{{profile}}\" (expired or invalid). Run `{{command}}` in a terminal, then try again.",
+      "profileNotFound": "AWS profile \"{{profile}}\" was not found in your AWS config. Check the AWS profile setting.",
+      "cliNotFound": "AWS CLI not found at \"{{cliPath}}\". Set its full path in the AWS CLI path setting (run `which aws` in a terminal to find it).",
+      "other": "Could not get AWS credentials: {{message}}"
+    }
   },
   "notices": {
+    "copyCommand": "Copy command",
+    "commandCopied": "Copied",
+    "retry": "Retry",
+    "checkingCredentials": "Checking AWS credentials…",
+    "stillFailing": "Still failing (checked at {{time}}).",
+    "vaultStoppedAuth": "Analysis stopped. Saved {{success}}/{{total}} notes; run analysis again to continue the remaining {{remaining}}.",
     "vaultAnalysisNotInitialized": "Vault analysis manager not initialized",
     "wasmInitializing": "Initializing graph analysis...",
     "wasmInitFailed": "Failed to initialize Graph Analysis WASM module: {{message}}",

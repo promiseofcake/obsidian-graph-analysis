@@ -1,6 +1,7 @@
 import { GraphAnalysisSettings } from '../types/types';
 import { geminiGenerateContent } from './GeminiRestClient';
 import { bedrockConverseStructured } from './BedrockRestClient';
+import { AwsAuthError, getAwsCliCredentials } from './AwsCliCredentials';
 import { createKnowledgeNetworkSchema } from '../ai/schemas/knowledge-network.schema';
 import { createVaultSemanticAnalysisSchema } from '../ai/schemas/vault-semantic-analysis.schema';
 import { createKnowledgeEvolutionSchema } from '../ai/schemas/knowledge-evolution.schema';
@@ -103,6 +104,15 @@ export class AIModelService {
         return !!this.settings?.geminiApiKey?.trim();
     }
 
+    /**
+     * Fail fast before a long run: resolve Bedrock credentials once so an expired SSO session
+     * surfaces in about a second instead of after every batch fails. Throws AwsAuthError. No-op for Gemini.
+     */
+    public async checkCredentials(): Promise<void> {
+        if (!this.isBedrock) return;
+        await getAwsCliCredentials(this.settings.awsCliPath.trim(), this.settings.bedrockAwsProfile.trim());
+    }
+
     private getApiKey(): string {
         const key = this.settings?.geminiApiKey?.trim();
         if (!key) {
@@ -127,7 +137,7 @@ export class AIModelService {
                 return await call();
             } catch (error) {
                 const message = (error as Error).message;
-                if (attempt >= this.BEDROCK_MAX_ATTEMPTS || !this.isRetryableBedrockError(message)) {
+                if (error instanceof AwsAuthError || attempt >= this.BEDROCK_MAX_ATTEMPTS || !this.isRetryableBedrockError(message)) {
                     throw error;
                 }
                 const cap = Math.min(this.BEDROCK_BACKOFF_MAX_MS, this.BEDROCK_BACKOFF_BASE_MS * 2 ** (attempt - 1));
@@ -305,7 +315,8 @@ export class AIModelService {
                 tokenUsage
             };
         } catch (error) {
-            if (error instanceof SemanticAnalysisError) throw error;
+            // Auth failures carry the fix (profile, command); callers stop the run on them
+            if (error instanceof SemanticAnalysisError || error instanceof AwsAuthError) throw error;
 
             const errorMessage = (error as Error).message;
             const errorType = classifyGeminiError(errorMessage);

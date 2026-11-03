@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { AwsAuthError } from '../services/AwsCliCredentials';
 
 /**
  * Shared utilities for Gemini API error classification and user-facing messages.
@@ -46,6 +47,9 @@ export function classifyGeminiError(message: string): SemanticErrorType {
  * Return a user-friendly error message for display in notices and UI.
  */
 export function getUserFriendlyMessage(error: Error): string {
+    if (error instanceof AwsAuthError) {
+        return getAwsAuthMessage(error);
+    }
     if (error instanceof SemanticAnalysisError) {
         switch (error.errorType) {
             case 'quota_exhausted':
@@ -57,4 +61,22 @@ export function getUserFriendlyMessage(error: Error): string {
         }
     }
     return error.message;
+}
+
+const AWS_AUTH_MESSAGE_KEYS: Record<AwsAuthError['reason'], string> = {
+    sso_expired: 'errors.awsAuth.ssoExpired',
+    rejected: 'errors.awsAuth.rejected',
+    profile_not_found: 'errors.awsAuth.profileNotFound',
+    cli_not_found: 'errors.awsAuth.cliNotFound',
+    other: 'errors.awsAuth.other'
+};
+
+/** What went wrong with AWS credentials and what the user should do about it. */
+export function getAwsAuthMessage(error: AwsAuthError): string {
+    return t(AWS_AUTH_MESSAGE_KEYS[error.reason], {
+        profile: error.profile,
+        cliPath: error.cliPath,
+        command: error.fixCommand ?? '',
+        message: error.message
+    });
 }
