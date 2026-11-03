@@ -159,6 +159,7 @@ Bedrock support lets the AI features run on models in your own AWS account inste
 
 - **Credentials:** before calling Bedrock, the plugin runs `aws configure export-credentials --profile <profile> --format process`, caches the temporary credentials in memory, and refreshes them 5 minutes before they expire. Nothing is written to disk.
 - **Inference:** each request is a SigV4-signed `POST` to `https://bedrock-runtime.<region>.amazonaws.com/model/<model-id>/converse`, sent through Obsidian's `requestUrl`. Structured output uses Converse's native JSON schema output. Because of Bedrock's schema limits, every field is required, and the number of results per batch isn't enforced by the schema.
+- **Expired credentials:** a vault analysis checks credentials before the first batch, so an expired SSO session is reported in about a second. If credentials expire mid-run, the run stops instead of failing every remaining batch; finished notes are saved and the next run picks up the rest. Either way, a notice stays open with the fix and a **Retry** button.
 - **Scheduling:** vault analysis runs 3 batches of 30 notes at a time, with no pause between batches (Gemini runs one at a time with a 6s pause). Throttling and transient server errors are retried with exponential backoff, up to 5 attempts. Daily-quota and request errors are not retried.
 - **Parameters:** `temperature` and `topP` are not sent, because newer Claude models reject them. Output is capped at 16,384 tokens or more per request.
 
@@ -166,7 +167,9 @@ Bedrock support lets the AI features run on models in your own AWS account inste
 
 | Symptom | Likely cause |
 |---|---|
-| "AWS credentials for profile … unavailable" | The SSO session expired: run `aws sso login --profile <profile>`. Or the profile name or AWS CLI path is wrong. |
+| "Your AWS SSO session … has expired" or "AWS rejected the credentials" | Run `aws sso login --profile <profile>` (the notice has a **Copy command** button), then click **Retry** on the notice. |
+| "AWS profile … was not found" | The profile name in settings isn't in `~/.aws/config`. |
+| "AWS CLI not found at …" | Set **AWS CLI path** to the output of `which aws` (Apple Silicon Homebrew installs to `/opt/homebrew/bin/aws`). |
 | `403` / `AccessDenied` | The role can't invoke that model or inference profile, or model access isn't enabled. The `converse` check in step 1 fails the same way. |
 | `400 The provided model identifier is invalid` | Wrong model ID for that region; use an inference profile ID such as `us.anthropic.claude-…`. |
 | `400 … not supported for this model` | The model doesn't support Converse structured output. |

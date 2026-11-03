@@ -3611,3 +3611,10 @@ body.graph-analysis-hide-status-bar .workspace .status-bar {
     backdrop-filter: blur(8px);
     background: color-mix(in srgb, var(--background-primary) 95%, transparent);
 }
+
+/* AWS auth notice: Copy command / Retry */
+.graph-analysis-notice-actions {
+    display: flex;
+    gap: var(--size-4-2);
+    margin-top: var(--size-4-2);
+}

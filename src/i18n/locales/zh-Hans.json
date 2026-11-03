@@ -91,9 +91,22 @@
   },
   "errors": {
     "quotaExhausted": "已达免费版每日限额，请明天再试。",
-    "rateLimit": "API 请求频率超限，请稍后重试。"
+    "rateLimit": "API 请求频率超限，请稍后重试。",
+    "awsAuth": {
+      "ssoExpired": "AWS 配置文件 \"{{profile}}\" 的 SSO 会话已过期。请在终端运行 `{{command}}`，然后重试。",
+      "rejected": "AWS 拒绝了配置文件 \"{{profile}}\" 的凭证（已过期或无效）。请在终端运行 `{{command}}`，然后重试。",
+      "profileNotFound": "在 AWS 配置中找不到配置文件 \"{{profile}}\"。请检查 AWS 配置文件设置。",
+      "cliNotFound": "在 \"{{cliPath}}\" 找不到 AWS CLI。请在 AWS CLI 路径设置中填写完整路径（可在终端运行 `which aws` 查找）。",
+      "other": "无法获取 AWS 凭证：{{message}}"
+    }
   },
   "notices": {
+    "copyCommand": "复制命令",
+    "commandCopied": "已复制",
+    "retry": "重试",
+    "checkingCredentials": "正在检查 AWS 凭证…",
+    "stillFailing": "仍然失败（检查于 {{time}}）。",
+    "vaultStoppedAuth": "分析已停止。已保存 {{success}}/{{total}} 篇笔记；再次运行分析可继续剩余 {{remaining}} 篇。",
     "vaultAnalysisNotInitialized": "知识库分析管理器未初始化",
     "wasmInitializing": "正在初始化图谱分析…",
     "wasmInitFailed": "图谱分析 WASM 模块初始化失败：{{message}}",

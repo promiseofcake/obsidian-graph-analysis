@@ -1,7 +1,7 @@
 import { requestUrl } from 'obsidian';
 import { SignatureV4 } from '@smithy/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
-import { getAwsCliCredentials } from './AwsCliCredentials';
+import { AwsAuthError, getAwsCliCredentials, invalidateAwsCliCredentials } from './AwsCliCredentials';
 import { wrapResultSchema } from './BedrockSchema';
 
 export interface BedrockConverseParams {
@@ -32,6 +32,9 @@ interface ConverseResponse {
     usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
 }
 
+// Bedrock's answer when the signing credentials are expired, revoked or malformed (not missing model access)
+const REJECTED_CREDENTIALS = /ExpiredToken|UnrecognizedClient|InvalidSignature|security token included in the request is (expired|invalid)/i;
+
 function parseErrorBody(status: number, body: string, json: unknown): string {
     const err = json as { message?: string; Message?: string } | undefined;
     const msg = err?.message ?? err?.Message ?? body?.slice(0, 500) ?? 'Unknown error';
@@ -43,6 +46,17 @@ function parseErrorBody(status: number, body: string, json: unknown): string {
  * Structured output uses Converse native JSON schema output (outputConfig.textFormat).
  */
 export async function bedrockConverseStructured(params: BedrockConverseParams): Promise<BedrockConverseResult> {
+    try {
+        return await converseOnce(params);
+    } catch (error) {
+        if (!(error instanceof AwsAuthError) || error.reason !== 'rejected') throw error;
+        // Cached credentials went stale; ask the CLI again once. If SSO itself expired, that call says so.
+        invalidateAwsCliCredentials(params.awsCliPath, params.awsProfile);
+        return converseOnce(params);
+    }
+}
+
+async function converseOnce(params: BedrockConverseParams): Promise<BedrockConverseResult> {
     const credentials = await getAwsCliCredentials(params.awsCliPath, params.awsProfile);
 
     const body = JSON.stringify({
@@ -104,7 +118,12 @@ export async function bedrockConverseStructured(params: BedrockConverseParams): 
     const requestId = result.headers?.['x-amzn-requestid'] ?? result.headers?.['X-Amzn-RequestId'] ?? 'unknown';
 
     if (result.status < 200 || result.status >= 300) {
-        throw new Error(`${parseErrorBody(result.status, result.text, json)} [requestId: ${requestId}]`);
+        const message = `${parseErrorBody(result.status, result.text, json)} [requestId: ${requestId}]`;
+        const errorType = result.headers?.['x-amzn-errortype'] ?? result.headers?.['X-Amzn-ErrorType'] ?? '';
+        if ((result.status === 400 || result.status === 403) && REJECTED_CREDENTIALS.test(`${errorType} ${message}`)) {
+            throw new AwsAuthError(message, 'rejected', params.awsProfile, params.awsCliPath);
+        }
+        throw new Error(message);
     }
 
     const response = (json ?? {}) as ConverseResponse;

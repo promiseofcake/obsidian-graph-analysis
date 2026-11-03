@@ -8,6 +8,8 @@ import {
 } from './MasterAnalysisManager';
 import { AIModelService, SemanticAnalysisError } from '../services/AIModelService';
 import { getUserFriendlyMessage } from '../utils/GeminiErrorUtils';
+import { AwsAuthError } from '../services/AwsCliCredentials';
+import { showAwsAuthNotice } from '../utils/AwsAuthNotice';
 import { t } from '../i18n';
 import { GraphDataBuilder } from '../components/graph-view/data/graph-builder';
 import { PluginService } from '../services/PluginService';
@@ -53,6 +55,24 @@ export class VaultSemanticAnalysisManager {
 
     clearAnalysisInProgress(): void {
         this._analysisInProgress = null;
+    }
+
+    /**
+     * Retry button on the AWS auth notice. Checks credentials first so the notice can say
+     * "still failing" in place (throws AwsAuthError); once they work, starts the refresh in the
+     * background and opens results like the modal does.
+     */
+    private async retryVaultAnalysis(): Promise<void> {
+        if (this.isAnalysisInProgress()) {
+            new Notice(t('notices.vaultAnalysisInProgress'));
+            return;
+        }
+        await this.aiService.checkCredentials();
+        void (async () => {
+            if (await this.generateVaultAnalysis()) {
+                await this.viewVaultAnalysisResults();
+            }
+        })();
     }
 
     clearActiveVaultAnalysisModal(modal: VaultAnalysisModal): void {
@@ -592,6 +612,17 @@ export class VaultSemanticAnalysisManager {
                 return false;
             }
 
+            // An expired SSO session is the common failure; catch it before any batch runs
+            try {
+                await this.aiService.checkCredentials();
+            } catch (error) {
+                if (error instanceof AwsAuthError) {
+                    showAwsAuthNotice(error, { onRetry: () => this.retryVaultAnalysis() });
+                    return false;
+                }
+                throw error;
+            }
+
             // Show initial notice with incremental update info and estimated time
             // Batches run in waves of `concurrency`, each wave taking about secondsPerBatch
             const batchSchedule = this.aiService.getBatchSchedule();
@@ -697,6 +728,9 @@ export class VaultSemanticAnalysisManager {
             // Aggregate token usage across all batches
             let totalTokenUsage = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
             let stoppedDueToQuota = false;
+            // Set when credentials fail mid-run; every later batch would fail the same way
+            let authError: AwsAuthError | null = null;
+            const shouldStop = (): boolean => stoppedDueToQuota || authError !== null;
             let firstBatchTimestamp: string | null = null;
             let nextBatchIndex = 0;
 
@@ -719,6 +753,13 @@ export class VaultSemanticAnalysisManager {
                 try {
                     batchResult = await this.analyzeBatch(batch, batchIndex);
                 } catch (batchError) {
+                    if (batchError instanceof AwsAuthError) {
+                        await this.appendFailedBatch(batch, batchIndex, modelName, batchError.message);
+                        failed += batch.length;
+                        processed += batch.length;
+                        authError = batchError;
+                        return;
+                    }
                     const err = batchError instanceof SemanticAnalysisError ? batchError : new SemanticAnalysisError((batchError as Error).message, 'other', modelName);
 
                     if (err.errorType === 'quota_exhausted') {
@@ -795,12 +836,12 @@ export class VaultSemanticAnalysisManager {
             };
 
             const worker = async (): Promise<void> => {
-                while (!stoppedDueToQuota && nextBatchIndex < totalBatches) {
+                while (!shouldStop() && nextBatchIndex < totalBatches) {
                     const batchIndex = nextBatchIndex++;
                     await processBatch(batchIndex);
 
                     // Gap between batches for providers with tight per-minute limits
-                    if (delayBetweenBatches > 0 && !stoppedDueToQuota && nextBatchIndex < totalBatches) {
+                    if (delayBetweenBatches > 0 && !shouldStop() && nextBatchIndex < totalBatches) {
                         const preparingNextBatchText = isIncrementalUpdate
                             ? `Preparing batch ${nextBatchIndex + 1}/${totalBatches}... (${processed}/${filesToProcess.length} completed, ${failed} failed, ${unchangedCount} unchanged)`
                             : `Preparing batch ${nextBatchIndex + 1}/${totalBatches}... (${processed}/${filesToProcess.length} completed, ${failed} failed)`;
@@ -811,9 +852,9 @@ export class VaultSemanticAnalysisManager {
             };
             await Promise.all(Array.from({ length: Math.min(concurrency, totalBatches) }, () => worker()));
 
-            if (stoppedDueToQuota && nextBatchIndex < totalBatches) {
+            if (shouldStop() && nextBatchIndex < totalBatches) {
                 const remainingBatches = batches.slice(nextBatchIndex);
-                await this.saveRemainingNotes(remainingBatches);
+                await this.saveRemainingNotes(remainingBatches, authError ? 'auth' : 'quota_exhausted');
             }
 
             // Hide progress notice
@@ -857,17 +898,28 @@ export class VaultSemanticAnalysisManager {
                 totalTokenUsage
             );
 
-            if (!stoppedDueToQuota && failed === 0) {
+            if (!shouldStop() && failed === 0) {
                 await this.clearFailedBatches();
             }
 
             enhanceNotice.hide();
-            
+
             // Show completion notice with detailed stats
             const successCount = processed - failed;
             let completionMessage: string;
 
-            if (stoppedDueToQuota) {
+            if (authError) {
+                // Sticky, with the fix command; partial results are saved and resume on the next run
+                showAwsAuthNotice(authError, {
+                    detail: t('notices.vaultStoppedAuth', {
+                        success: successCount,
+                        total: filesToProcess.length,
+                        remaining: filesToProcess.length - successCount
+                    }),
+                    onRetry: () => this.retryVaultAnalysis()
+                });
+                return true;
+            } else if (stoppedDueToQuota) {
                 const retryTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
                 const retryTimeStr = retryTime.toLocaleString();
                 const remainingCount = filesToProcess.length - successCount;
@@ -1019,7 +1071,7 @@ export class VaultSemanticAnalysisManager {
             
             return { results: sortedResults, tokenUsage: batchTokenUsage };
         } catch (error) {
-            if (error instanceof SemanticAnalysisError) {
+            if (error instanceof SemanticAnalysisError || error instanceof AwsAuthError) {
                 throw error;
             }
             // console.error('Error in batch analysis:', error);
@@ -1134,7 +1186,8 @@ export class VaultSemanticAnalysisManager {
     }
 
     private async saveRemainingNotes(
-        batches: Array<Array<{ file: TFile; charCount: number }>>
+        batches: Array<Array<{ file: TFile; charCount: number }>>,
+        reason: 'quota_exhausted' | 'auth'
     ): Promise<void> {
         const notes = batches.flatMap(batch =>
             batch.map(b => ({ path: b.file.path, basename: b.file.basename, charCount: b.charCount }))
@@ -1142,11 +1195,12 @@ export class VaultSemanticAnalysisManager {
         if (notes.length === 0) return;
         const data = await this.readFailedBatchesData();
         const now = new Date();
-        const retryAfter = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        // Quota resets daily; after re-auth the user can retry immediately
+        const retryAfter = reason === 'quota_exhausted' ? new Date(now.getTime() + 24 * 60 * 60 * 1000) : now;
         data.remaining = {
             savedAt: now.toISOString(),
             retryAfter: retryAfter.toISOString(),
-            reason: 'quota_exhausted',
+            reason,
             notes
         };
         await this.dataStore.setFailedBatches(data);
