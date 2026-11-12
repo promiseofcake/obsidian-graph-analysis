@@ -1,4 +1,5 @@
 import { requestUrl } from 'obsidian';
+import { withRequestTimeout } from '../utils/requestTimeout';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -59,13 +60,13 @@ export async function geminiGenerateContent(
         generationConfig: params.generationConfig
     };
 
-    const result = await requestUrl({
+    const result = await withRequestTimeout(requestUrl({
         url,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         throw: false
-    });
+    }), 'Gemini');
 
     let json: unknown;
     try {
