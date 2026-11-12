@@ -3,6 +3,7 @@ import { SignatureV4 } from '@smithy/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { AwsAuthError, getAwsCliCredentials, invalidateAwsCliCredentials } from './AwsCliCredentials';
 import { wrapResultSchema } from './BedrockSchema';
+import { withRequestTimeout } from '../utils/requestTimeout';
 
 export interface BedrockConverseParams {
     awsCliPath: string;
@@ -100,13 +101,13 @@ async function converseOnce(params: BedrockConverseParams): Promise<BedrockConve
         if (name.toLowerCase() !== 'host') headers[name] = value;
     }
 
-    const result = await requestUrl({
+    const result = await withRequestTimeout(requestUrl({
         url: `https://${hostname}${path}`,
         method: 'POST',
         headers,
         body,
         throw: false
-    });
+    }), 'Bedrock');
 
     let json: unknown;
     try {
